@@ -259,7 +259,7 @@ async function chatMessage(
    * 请求模型
    */
   const response = await client.chat.completions.create({
-    model: "Qwen3-0.6B-Q8_0",
+    model: "qwen3-0.6b-q4_k_m",
 
     tool_choice: "auto",
 
