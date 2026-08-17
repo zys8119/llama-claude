@@ -16,7 +16,6 @@ const MAX_TOOL_ROUNDS = 10;
 _.templateSettings.interpolate = /{{([\s\S]+?)}}/g;
 
 const systemPrompt = [
-  fs.readFileSync("./skills/tdd/SKILL.md", "utf-8"),
   _.template(
     fs
       .readFileSync("./system.md", "utf-8")
@@ -27,6 +26,7 @@ const systemPrompt = [
     current_time: dayjs().format("YYYY-MM-DD HH:mm:ss"),
     project_dir: path.resolve(import.meta.dirname, "./dist"),
   }),
+  fs.readFileSync("./skills/tdd/SKILL.md", "utf-8"),
 ].join("\n");
 
 /**
@@ -365,7 +365,7 @@ async function chatMessage(
 const result = await chatMessage(
   systemPrompt,
   // "创建文件test.txt，并写入内容hello world",
-  "在test.ts文件中实现冒泡排序",
+  "test.ts 文件中实现冒泡排序",
   // "当前项目目录路径",
 );
 
