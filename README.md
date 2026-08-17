@@ -6,5 +6,5 @@
 
 
 ```
-ls bin.ts system.md | enter -r zsh -c "tsx bin.ts"  
+ls bin.ts system.md | entr -r zsh -c "tsx bin.ts"  
 ```
