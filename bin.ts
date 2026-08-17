@@ -15,16 +15,19 @@ const MAX_TOOL_ROUNDS = 10;
 
 _.templateSettings.interpolate = /{{([\s\S]+?)}}/g;
 
-const systemPrompt = _.template(
-  fs
-    .readFileSync("./system.md", "utf-8")
-    .split("\n")
-    .map((line) => line.trim())
-    .join("\n"),
-)({
-  current_time: dayjs().format("YYYY-MM-DD HH:mm:ss"),
-  project_dir: path.resolve(import.meta.dirname, "./dist"),
-});
+const systemPrompt = [
+  fs.readFileSync("./skills/tdd/SKILL.md", "utf-8"),
+  _.template(
+    fs
+      .readFileSync("./system.md", "utf-8")
+      .split("\n")
+      .map((line) => line.trim())
+      .join("\n"),
+  )({
+    current_time: dayjs().format("YYYY-MM-DD HH:mm:ss"),
+    project_dir: path.resolve(import.meta.dirname, "./dist"),
+  }),
+].join("\n");
 
 /**
  * =========================
@@ -362,7 +365,7 @@ async function chatMessage(
 const result = await chatMessage(
   systemPrompt,
   // "创建文件test.txt，并写入内容hello world",
-  "在test.ts文件中实现冒泡排序",
+  "在test.ts文件中实现冒泡排序,并用红黑测试",
   // "当前项目目录路径",
 );
 
