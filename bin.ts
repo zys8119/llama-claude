@@ -5,11 +5,16 @@ import fs from "fs";
 import path from "path";
 import * as z from "zod";
 import chalk from "chalk";
+
 const client = new OpenAI({
-  apiKey: "ollama", // This is the default and can be omitted
+  apiKey: "ollama",
   baseURL: "http://127.0.0.1:8080",
 });
+
+const MAX_TOOL_ROUNDS = 10;
+
 _.templateSettings.interpolate = /{{([\s\S]+?)}}/g;
+
 const systemPrompt = _.template(
   fs
     .readFileSync("./system.md", "utf-8")
@@ -20,6 +25,12 @@ const systemPrompt = _.template(
   current_time: dayjs().format("YYYY-MM-DD HH:mm:ss"),
   project_dir: path.resolve(import.meta.dirname, "./dist"),
 });
+
+/**
+ * =========================
+ * 工具注册
+ * =========================
+ */
 
 const toolsRegister = [
   {
@@ -33,14 +44,16 @@ const toolsRegister = [
         })
         .toJSONSchema(),
     },
-    callback: (args: any) => {
+
+    callback: async (args: { city: string }) => {
       if (args.city) {
         return `${args.city}天气是晴天`;
-      } else {
-        return "无法获取天气";
       }
+
+      return "无法获取天气";
     },
   },
+
   {
     type: "function",
     function: {
@@ -48,10 +61,12 @@ const toolsRegister = [
       description: "获取当前时间",
       parameters: z.object({}).toJSONSchema(),
     },
-    callback: () => {
+
+    callback: async () => {
       return dayjs().format("YYYY-MM-DD HH:mm:ss");
     },
   },
+
   {
     type: "function",
     function: {
@@ -65,115 +80,372 @@ const toolsRegister = [
         })
         .toJSONSchema(),
     },
-    callback: (args: any) => {
+
+    callback: async (args: {
+      filename: string;
+      filedir: string;
+      content: string;
+    }) => {
       const { filename, filedir, content } = args;
-      console.log(filename, filedir, content);
+
+      console.log(chalk.yellow(`[write_file] ${filename} ${filedir}`));
+
       try {
-        fs.mkdirSync(filedir, { recursive: true });
-        fs.writeFileSync(path.resolve(filedir, filename), content);
-        return `文件[${path.resolve(filedir, filename)}]已经写入成功`;
+        fs.mkdirSync(filedir, {
+          recursive: true,
+        });
+
+        const filePath = path.resolve(filedir, filename);
+
+        fs.writeFileSync(filePath, content, "utf-8");
+
+        return `文件[${filePath}]已经写入成功`;
       } catch (err) {
         return `文件写入失败：${err}`;
       }
     },
   },
 ] as unknown as OpenAI.ChatCompletionTool[];
-type DeepRequired<T> = T extends (...args: any[]) => any
-  ? T
-  : T extends object
-    ? {
-        [K in keyof T]-?: DeepRequired<T[K]>;
+
+/**
+ * =========================
+ * 类型
+ * =========================
+ */
+
+type ToolCall = {
+  index: number;
+  id: string;
+  type: "function";
+  function: {
+    name: string;
+    arguments: string;
+  };
+};
+
+/**
+ * =========================
+ * 查找工具
+ * =========================
+ */
+
+function findTool(name: string) {
+  return toolsRegister.find(
+    (tool) => tool.type === "function" && tool.function.name === name,
+  );
+}
+
+/**
+ * =========================
+ * 执行工具
+ * =========================
+ */
+
+async function executeTool(toolCall: ToolCall, userMessage: string) {
+  const tool = findTool(toolCall.function.name);
+
+  if (!tool) {
+    return {
+      role: "tool" as const,
+      tool_call_id: toolCall.id,
+      content: JSON.stringify(`工具 ${toolCall.function.name} 不存在`),
+    };
+  }
+
+  let args: any;
+
+  try {
+    args = JSON.parse(toolCall.function.arguments || "{}");
+  } catch (error) {
+    console.error(
+      chalk.red(`工具参数解析失败: ${toolCall.function.arguments}`),
+    );
+
+    return {
+      role: "tool" as const,
+      tool_call_id: toolCall.id,
+      content: JSON.stringify({
+        success: false,
+        error: "工具参数 JSON 解析失败",
+        arguments: toolCall.function.arguments,
+      }),
+    };
+  }
+
+  console.log(chalk.cyan(`\n调用工具: ${toolCall.function.name}`));
+
+  console.log(chalk.gray(JSON.stringify(args, null, 2)));
+
+  try {
+    const result = await (tool as any).callback(args, userMessage);
+
+    console.log(
+      chalk.green(
+        `工具执行结果:${toolCall.function.name}----> ${JSON.stringify(result)}`,
+      ),
+    );
+
+    return {
+      role: "tool" as const,
+      tool_call_id: toolCall.id,
+      content: JSON.stringify(result),
+    };
+  } catch (error) {
+    console.error(chalk.red(`工具执行失败: ${error}`));
+
+    return {
+      role: "tool" as const,
+      tool_call_id: toolCall.id,
+      content: JSON.stringify({
+        success: false,
+        error: String(error),
+      }),
+    };
+  }
+}
+
+/**
+ * =========================
+ * 收集 Stream Tool Calls
+ * =========================
+ */
+
+async function collectStream(
+  response: AsyncIterable<OpenAI.ChatCompletionChunk>,
+) {
+  const tools = new Map<number, ToolCall>();
+
+  let content = "";
+
+  let reasoningContent = "";
+
+  for await (const chunk of response) {
+    const delta = chunk.choices[0]?.delta;
+
+    if (!delta) {
+      continue;
+    }
+
+    /**
+     * 普通文本
+     */
+    if (delta.content) {
+      content += delta.content;
+
+      process.stdout.write(delta.content);
+    }
+
+    /**
+     * Qwen reasoning_content
+     */
+    const reasoning = (delta as any).reasoning_content;
+
+    if (reasoning) {
+      reasoningContent += reasoning;
+
+      process.stdout.write(chalk.gray(reasoning));
+    }
+
+    /**
+     * Tool Calls
+     */
+    if (delta.tool_calls) {
+      for (const toolCall of delta.tool_calls) {
+        const index = toolCall.index ?? 0;
+
+        let current = tools.get(index);
+
+        /**
+         * 第一个 chunk
+         */
+        if (!current) {
+          current = {
+            index,
+            id: toolCall.id || "",
+            type: "function",
+            function: {
+              name: toolCall.function?.name || "",
+              arguments: toolCall.function?.arguments || "",
+            },
+          };
+
+          tools.set(index, current);
+
+          continue;
+        }
+
+        /**
+         * 后续 chunk
+         */
+
+        if (toolCall.id) {
+          current.id += toolCall.id;
+        }
+
+        if (toolCall.function?.name) {
+          current.function.name += toolCall.function.name;
+        }
+
+        if (toolCall.function?.arguments) {
+          current.function.arguments += toolCall.function.arguments;
+        }
       }
-    : T;
-let bool = false;
-const chatMessage = async function (systemPrompt: string, user: string) {
-  console.log(chalk.blue(systemPrompt));
+    }
+  }
+
+  return {
+    content,
+    reasoningContent,
+    toolCalls: [...tools.values()],
+  };
+}
+
+/**
+ * =========================
+ * Chat
+ * =========================
+ */
+
+async function chatMessage(
+  systemPrompt: string,
+  userMessage: string,
+  messages: OpenAI.ChatCompletionMessageParam[] = [],
+  round = 0,
+): Promise<string> {
+  /**
+   * 防止无限 Tool Calling
+   */
+  if (round >= MAX_TOOL_ROUNDS) {
+    throw new Error(`Tool Calling 超过最大轮数 ${MAX_TOOL_ROUNDS}`);
+  }
+
+  console.log(chalk.blue(`\n========== 第 ${round + 1} 轮 ==========`));
+
+  /**
+   * 当前请求消息
+   */
+  const requestMessages: OpenAI.ChatCompletionMessageParam[] = [
+    {
+      role: "system",
+      content: systemPrompt,
+    },
+    {
+      role: "user",
+      content: userMessage,
+    },
+    ...messages,
+  ];
+
+  /**
+   * 请求模型
+   */
   const response = await client.chat.completions.create({
     model: "Qwen3-0.6B-Q8_0",
+
     tool_choice: "auto",
+
     tools: toolsRegister,
-    messages: [
-      {
-        role: "system",
-        content: systemPrompt,
-      },
-      {
-        role: "user",
-        content: user,
-      },
-    ],
+
+    messages: requestMessages,
+
     stream: true,
   });
-  let tools: DeepRequired<OpenAI.ChatCompletionChunk.Choice.Delta.ToolCall>[] =
-    [];
-  for await (const chunk of response) {
-    const delta = chunk.choices[0].delta;
-    if (delta) {
-      if (delta.content) {
-        process.stdout.write(delta.content || "");
-      } else if ((delta as any).reasoning_content) {
-        process.stdout.write(
-          chalk.gray((delta as any).reasoning_content || ""),
-        );
-      } else if (delta.tool_calls) {
-        if (bool) {
-          console.log(chalk.green(JSON.stringify(delta)));
-        }
-        delta.tool_calls.forEach((tool_call: any) => {
-          const tool = tools.find((t) => t.index === tool_call.index);
-          if (!tool) {
-            tools.push(tool_call);
-          } else {
-            tool.function.arguments += tool_call.function.arguments;
-          }
-        });
-      } else {
-        // console.log(chunk.choices[0], 55555);
-      }
-    }
+
+  /**
+   * 收集 Stream
+   */
+  const result = await collectStream(response);
+
+  /**
+   * 没有 Tool Call
+   *
+   * 说明模型已经生成最终回答
+   */
+  if (result.toolCalls.length === 0) {
+    console.log(chalk.green("\n\n========== 最终回答 =========="));
+
+    return result.content;
   }
-  console.log(tools, 3333);
-  const toolsResult: string[] = [];
-  tools.forEach((tool) => {
-    if (tool.type === "function") {
-      try {
-        tool.function.arguments = JSON.parse(tool.function.arguments);
-      } catch (err) {
-        console.log(err);
-      }
-    }
-  });
-  await Promise.allSettled(
-    tools.map(async (tool) => {
-      if (tool.type === "function") {
-        const fun = toolsRegister.find(
-          (t) =>
-            t.type === "function" && t.function.name === tool.function.name,
-        );
-        if (!fun) {
-          console.log(tool.function.name, tool.function.arguments);
-          return;
-        } else {
-          const res = await (fun as any).callback(
-            tool.function.arguments,
-            user,
-          );
-          toolsResult.push(
-            `工具【${tool.function.name}】执行调用结果：\n${res || ""}\n\n${systemPrompt}`,
-          );
-        }
-      }
-    }),
+
+  console.log(chalk.yellow("\n\n========== Tool Calls =========="));
+
+  console.log(JSON.stringify(result.toolCalls, null, 2));
+
+  /**
+   * =========================
+   * 构造 Assistant Tool Call
+   * =========================
+   *
+   * 这是非常关键的一步。
+   *
+   * 第二次请求必须告诉模型：
+   *
+   * "刚才是你调用了这些工具"
+   */
+
+  const assistantMessage: OpenAI.ChatCompletionAssistantMessageParam = {
+    role: "assistant",
+
+    content: result.content || null,
+
+    tool_calls: result.toolCalls.map((toolCall) => ({
+      id: toolCall.id,
+
+      type: "function",
+
+      function: {
+        name: toolCall.function.name,
+
+        arguments: toolCall.function.arguments,
+      },
+    })),
+  };
+
+  /**
+   * =========================
+   * 执行所有工具
+   * =========================
+   */
+
+  const toolResults = await Promise.all(
+    result.toolCalls.map((toolCall) => executeTool(toolCall, userMessage)),
   );
-  if (toolsResult.length > 0) {
-    if (bool) {
-      return;
-    }
-    bool = true;
-    await chatMessage(
-      `工具最新调用结果如下：\n${toolsResult.join("\n")}`,
-      user,
-    );
-  }
-};
-await chatMessage(systemPrompt, "创建文件test.txt，并写入内容hello world");
+
+  /**
+   * =========================
+   * 继续请求模型
+   * =========================
+   *
+   * messages:
+   *
+   * user
+   * ↓
+   * assistant(tool_calls)
+   * ↓
+   * tool(result)
+   *
+   */
+
+  return chatMessage(
+    systemPrompt,
+    userMessage,
+    [...messages, assistantMessage, ...toolResults],
+    round + 1,
+  );
+}
+
+/**
+ * =========================
+ * 执行
+ * =========================
+ */
+
+const result = await chatMessage(
+  systemPrompt,
+  // "创建文件test.txt，并写入内容hello world",
+  "创建文件test.txt，并写入内容hello world，几天几号，天气怎么样？明年是什么年，年份是什么",
+);
+
+console.log(chalk.green("\n\n最终结果:"));
+
+console.log(result);
