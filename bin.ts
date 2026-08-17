@@ -362,8 +362,8 @@ async function chatMessage(
 const result = await chatMessage(
   systemPrompt,
   // "创建文件test.txt，并写入内容hello world",
-  // "test.ts 实现nodejs服务",
-  "你是谁",
+  "在test.ts中 实现nodejs服务",
+  // "当前项目目录路径",
 );
 
 console.log(chalk.green("\n\n最终结果:"));
