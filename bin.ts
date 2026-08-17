@@ -5,7 +5,7 @@ import fs from "fs";
 import * as z from "zod";
 import chalk from "chalk";
 const client = new OpenAI({
-  apiKey: process.env["OPENAI_API_KEY"], // This is the default and can be omitted
+  apiKey: "ollama", // This is the default and can be omitted
   baseURL: "http://127.0.0.1:8080",
 });
 _.templateSettings.interpolate = /{{([\s\S]+?)}}/g;
