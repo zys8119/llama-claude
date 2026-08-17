@@ -71,9 +71,9 @@ const toolsRegister = [
       try {
         fs.mkdirSync(filedir, { recursive: true });
         fs.writeFileSync(path.resolve(filedir, filename), content);
-        return "写入成功";
+        return `文件${JSON.stringify(args)}已经写入成功`;
       } catch (err) {
-        return `写入失败：${err}`;
+        return `文件${JSON.stringify(args)}写入失败：${err}`;
       }
     },
   },
@@ -86,6 +86,7 @@ type DeepRequired<T> = T extends (...args: any[]) => any
       }
     : T;
 const chatMessage = async function (systemPrompt: string, user: string) {
+  console.log(chalk.blue(systemPrompt));
   const response = await client.chat.completions.create({
     model: "Qwen3-0.6B-Q8_0",
     tool_choice: "auto",
@@ -127,6 +128,7 @@ const chatMessage = async function (systemPrompt: string, user: string) {
       }
     }
   }
+  console.log(tools, 3333);
   const toolsResult: string[] = [];
   tools.forEach((tool) => {
     if (tool.type === "function") {
@@ -160,6 +162,7 @@ const chatMessage = async function (systemPrompt: string, user: string) {
     }),
   );
   if (toolsResult.length > 0) {
+    console.log(toolsResult);
     await chatMessage(
       `工具最新调用结果如下：\n${toolsResult.join("\n")}`,
       user,
