@@ -2,6 +2,7 @@ import OpenAI from "openai";
 import _ from "lodash";
 import dayjs from "dayjs";
 import fs from "fs";
+import path from "path";
 import * as z from "zod";
 import chalk from "chalk";
 const client = new OpenAI({
@@ -17,6 +18,7 @@ const systemPrompt = _.template(
     .join("\n"),
 )({
   current_time: dayjs().format("YYYY-MM-DD HH:mm:ss"),
+  project_dir: path.resolve(import.meta.dirname, "./dist"),
 });
 
 const toolsRegister = [
@@ -58,15 +60,17 @@ const toolsRegister = [
       parameters: z
         .object({
           filename: z.string().describe("文件名"),
+          filedir: z.string().describe("文件目录"),
           content: z.string().describe("文件内容"),
         })
         .toJSONSchema(),
     },
     callback: (args: any) => {
-      const { filename, content } = args;
-      console.log(filename, content);
+      const { filename, filedir, content } = args;
+      console.log(filename, filedir, content);
       try {
-        fs.writeFileSync(filename, content);
+        fs.mkdirSync(filedir, { recursive: true });
+        fs.writeFileSync(path.resolve(filedir, filename), content);
         return "写入成功";
       } catch (err) {
         return `写入失败：${err}`;
@@ -149,7 +153,7 @@ const chatMessage = async function (systemPrompt: string, user: string) {
             user,
           );
           toolsResult.push(
-            `工具【${tool.function.name}】调用结果：\n${res || ""}\n`,
+            `工具【${tool.function.name}】调用结果：\n${res || ""}\n${systemPrompt}`,
           );
         }
       }
