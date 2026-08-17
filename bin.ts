@@ -71,9 +71,9 @@ const toolsRegister = [
       try {
         fs.mkdirSync(filedir, { recursive: true });
         fs.writeFileSync(path.resolve(filedir, filename), content);
-        return `文件${JSON.stringify(args)}已经写入成功`;
+        return `文件[${path.resolve(filedir, filename)}]已经写入成功`;
       } catch (err) {
-        return `文件${JSON.stringify(args)}写入失败：${err}`;
+        return `文件写入失败：${err}`;
       }
     },
   },
@@ -85,6 +85,7 @@ type DeepRequired<T> = T extends (...args: any[]) => any
         [K in keyof T]-?: DeepRequired<T[K]>;
       }
     : T;
+let bool = false;
 const chatMessage = async function (systemPrompt: string, user: string) {
   console.log(chalk.blue(systemPrompt));
   const response = await client.chat.completions.create({
@@ -115,6 +116,9 @@ const chatMessage = async function (systemPrompt: string, user: string) {
           chalk.gray((delta as any).reasoning_content || ""),
         );
       } else if (delta.tool_calls) {
+        if (bool) {
+          console.log(chalk.green(JSON.stringify(delta)));
+        }
         delta.tool_calls.forEach((tool_call: any) => {
           const tool = tools.find((t) => t.index === tool_call.index);
           if (!tool) {
@@ -155,14 +159,17 @@ const chatMessage = async function (systemPrompt: string, user: string) {
             user,
           );
           toolsResult.push(
-            `工具【${tool.function.name}】调用结果：\n${res || ""}\n${systemPrompt}`,
+            `工具【${tool.function.name}】执行调用结果：\n${res || ""}\n\n${systemPrompt}`,
           );
         }
       }
     }),
   );
   if (toolsResult.length > 0) {
-    console.log(toolsResult);
+    if (bool) {
+      return;
+    }
+    bool = true;
     await chatMessage(
       `工具最新调用结果如下：\n${toolsResult.join("\n")}`,
       user,
