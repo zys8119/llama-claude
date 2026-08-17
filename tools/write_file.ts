@@ -1,0 +1,45 @@
+import * as z from "zod";
+import chalk from "chalk";
+import fs from "fs";
+import path from "path";
+
+export const writeFile = async (args: {
+  filename: string;
+  filedir: string;
+  content: string;
+}) => {
+  const { filename, filedir, content } = args;
+
+  console.log(chalk.yellow(`[write_file] ${filename} ${filedir}`));
+
+  try {
+    fs.mkdirSync(filedir, {
+      recursive: true,
+    });
+
+    const filePath = path.resolve(filedir, filename);
+
+    fs.writeFileSync(filePath, content, "utf-8");
+
+    return `文件[${filePath}]已经写入成功`;
+  } catch (err) {
+    return `文件写入失败：${err}`;
+  }
+};
+
+export default {
+  type: "function",
+  function: {
+    name: "write_file",
+    description: "写入文件",
+    parameters: z
+      .object({
+        filename: z.string().describe("文件名"),
+        filedir: z.string().describe("文件目录"),
+        content: z.string().describe("文件内容"),
+      })
+      .toJSONSchema(),
+  },
+
+  callback: writeFile,
+};

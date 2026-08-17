@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "ls **/*.ts system.md package.json | entr -r zsh -c \"clear; tsx bin.ts\""
   },
   "keywords": [],
   "author": "",
@@ -18,9 +18,12 @@
   },
   "type": "module",
   "dependencies": {
+    "@types/fs-extra": "^11.0.4",
     "@types/lodash": "^4.17.25",
     "chalk": "^6.0.0",
     "dayjs": "^1.11.22",
+    "fs-extra": "^11.4.0",
+    "glob": "^13.0.6",
     "lodash": "^4.18.1",
     "openai": "^7.4.0",
     "zod": "^4.4.3"
