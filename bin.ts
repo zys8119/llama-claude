@@ -362,7 +362,7 @@ async function chatMessage(
 const result = await chatMessage(
   systemPrompt,
   // "创建文件test.txt，并写入内容hello world",
-  "读取文件test.txt的内容",
+  "读取文件test.txt的内容，并实现js去重复功能",
 );
 
 console.log(chalk.green("\n\n最终结果:"));
