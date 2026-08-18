@@ -4,14 +4,12 @@ import dayjs from "dayjs";
 import fs from "fs";
 import path from "path";
 import chalk from "chalk";
-import { createInterface } from "readline/promises";
-import { stdin as input, stdout as output } from "process";
 
 import toolsRegister from "./tools.ts";
 
 /**
  * =========================================================
- * OpenAI Client
+ * OpenAI
  * =========================================================
  */
 
@@ -20,24 +18,19 @@ const client = new OpenAI({
   baseURL: "http://127.0.0.1:8080",
 });
 
-/**
- * Tool Calling 最大轮数
- */
+const MODEL = "qwen3-0.6b-q4_k_m";
+
 const MAX_TOOL_ROUNDS = 10;
 
 /**
  * =========================================================
- * Lodash Template
+ * Template
  * =========================================================
  */
 
 _.templateSettings.interpolate = /{{([\s\S]+?)}}/g;
 
-/**
- * =========================================================
- * System Prompt
- * =========================================================
- */
+const projectDir = path.resolve(import.meta.dirname, "./dist");
 
 const systemPrompt = _.template(
   fs
@@ -48,32 +41,103 @@ const systemPrompt = _.template(
 )({
   current_time: dayjs().format("YYYY-MM-DD HH:mm:ss"),
 
-  project_dir: path.resolve(import.meta.dirname, "./dist"),
+  project_dir: projectDir,
 });
 
 /**
  * =========================================================
- * Tool Call 类型
+ * Types
  * =========================================================
  */
 
 type ToolCall = {
   index: number;
-
   id: string;
-
   type: "function";
 
   function: {
     name: string;
-
     arguments: string;
   };
 };
 
+type FileItem = {
+  name: string;
+  path: string;
+  isDirectory: boolean;
+};
+
+type CommandItem = {
+  command: string;
+  description: string;
+};
+
+type PickerMode = "file" | "command" | null;
+
 /**
  * =========================================================
- * 查找工具
+ * ANSI
+ * =========================================================
+ */
+
+const ANSI = {
+  clearLine: "\x1b[2K\r",
+
+  clearScreen: "\x1b[2J\x1b[H",
+
+  cursorLeft: (n: number) => `\x1b[${n}D`,
+
+  cursorRight: (n: number) => `\x1b[${n}C`,
+
+  cursorUp: (n: number) => `\x1b[${n}A`,
+
+  cursorDown: (n: number) => `\x1b[${n}B`,
+
+  hideCursor: "\x1b[?25l",
+
+  showCursor: "\x1b[?25h",
+
+  saveCursor: "\x1b[s",
+
+  restoreCursor: "\x1b[u",
+};
+
+/**
+ * =========================================================
+ * Commands
+ * =========================================================
+ */
+
+const commands: CommandItem[] = [
+  {
+    command: "/help",
+    description: "查看帮助",
+  },
+
+  {
+    command: "/clear",
+    description: "清空当前会话上下文",
+  },
+
+  {
+    command: "/history",
+    description: "查看历史消息",
+  },
+
+  {
+    command: "/exit",
+    description: "退出程序",
+  },
+
+  {
+    command: "/quit",
+    description: "退出程序",
+  },
+];
+
+/**
+ * =========================================================
+ * 查找 Tool
  * =========================================================
  */
 
@@ -85,7 +149,7 @@ function findTool(name: string) {
 
 /**
  * =========================================================
- * 执行 Tool
+ * Tool
  * =========================================================
  */
 
@@ -93,123 +157,65 @@ async function executeTool(
   toolCall: ToolCall,
   userMessage: string,
 ): Promise<OpenAI.ChatCompletionToolMessageParam> {
-  /**
-   * 查找工具
-   */
-
   const tool = findTool(toolCall.function.name);
 
-  /**
-   * 工具不存在
-   */
-
   if (!tool) {
-    console.error(chalk.red(`\n工具不存在: ${toolCall.function.name}`));
-
     return {
       role: "tool",
-
       tool_call_id: toolCall.id,
 
       content: JSON.stringify({
         success: false,
-
         error: `工具 ${toolCall.function.name} 不存在`,
       }),
     };
   }
 
-  /**
-   * =====================================================
-   * 解析参数
-   * =====================================================
-   */
-
   let args: any;
 
   try {
     args = JSON.parse(toolCall.function.arguments || "{}");
-  } catch (error) {
-    console.error(chalk.red(`\n工具参数解析失败:`));
-
-    console.error(chalk.gray(toolCall.function.arguments));
+  } catch {
+    console.error(chalk.red("工具参数 JSON 解析失败"));
 
     return {
       role: "tool",
-
       tool_call_id: toolCall.id,
 
       content: JSON.stringify({
         success: false,
-
         error: "工具参数 JSON 解析失败",
-
         arguments: toolCall.function.arguments,
       }),
     };
   }
 
-  /**
-   * =====================================================
-   * 打印 Tool
-   * =====================================================
-   */
-
   console.log();
 
-  console.log(chalk.cyan("┌──────────────────────────────────────"));
-
-  console.log(chalk.cyan(`│ 🔧 Tool: ${toolCall.function.name}`));
-
-  console.log(chalk.cyan("└──────────────────────────────────────"));
+  console.log(chalk.cyan(`🔧 Tool: ${toolCall.function.name}`));
 
   console.log(chalk.gray(JSON.stringify(args, null, 2)));
-
-  /**
-   * =====================================================
-   * 执行 Tool
-   * =====================================================
-   */
 
   try {
     const result = await (tool as any).callback(args, userMessage);
 
-    /**
-     * 打印结果
-     */
-
-    console.log(chalk.green(`\n✓ Tool 执行成功: ${toolCall.function.name}`));
-
-    console.log(chalk.gray(JSON.stringify(result, null, 2)));
-
-    /**
-     * 返回 Tool Message
-     */
+    console.log(chalk.green("✓ Tool 执行成功"));
 
     return {
       role: "tool",
-
       tool_call_id: toolCall.id,
 
       content: JSON.stringify(result),
     };
   } catch (error) {
-    /**
-     * Tool 执行失败
-     */
-
-    console.error(chalk.red(`\n✗ Tool 执行失败: ${toolCall.function.name}`));
-
-    console.error(chalk.red(String(error)));
+    console.error(chalk.red(`✗ Tool 执行失败: ${String(error)}`));
 
     return {
       role: "tool",
-
       tool_call_id: toolCall.id,
 
       content: JSON.stringify({
         success: false,
-
         error: String(error),
       }),
     };
@@ -218,44 +224,18 @@ async function executeTool(
 
 /**
  * =========================================================
- * 收集 Stream
- *
- * 处理：
- *
- * content
- * reasoning_content
- * tool_calls
+ * Stream
  * =========================================================
  */
 
 async function collectStream(
   response: AsyncIterable<OpenAI.ChatCompletionChunk>,
 ) {
-  /**
-   * Tool Calls
-   *
-   * key = tool index
-   */
-
-  const tools = new Map<number, ToolCall>();
-
-  /**
-   * 普通文本
-   */
+  const toolMap = new Map<number, ToolCall>();
 
   let content = "";
 
-  /**
-   * Reasoning
-   */
-
   let reasoningContent = "";
-
-  /**
-   * =====================================================
-   * Stream
-   * =====================================================
-   */
 
   for await (const chunk of response) {
     const delta = chunk.choices[0]?.delta;
@@ -265,9 +245,7 @@ async function collectStream(
     }
 
     /**
-     * ===================================================
-     * 普通文本
-     * ===================================================
+     * 普通输出
      */
 
     if (delta.content) {
@@ -277,9 +255,7 @@ async function collectStream(
     }
 
     /**
-     * ===================================================
      * Reasoning
-     * ===================================================
      */
 
     const reasoning = (delta as any).reasoning_content;
@@ -291,30 +267,14 @@ async function collectStream(
     }
 
     /**
-     * ===================================================
-     * Tool Calls
-     * ===================================================
+     * Tool Call
      */
 
     if (delta.tool_calls) {
       for (const toolCall of delta.tool_calls) {
-        /**
-         * Tool index
-         */
-
         const index = toolCall.index ?? 0;
 
-        /**
-         * 当前 Tool
-         */
-
-        let current = tools.get(index);
-
-        /**
-         * =================================================
-         * 第一个 Chunk
-         * =================================================
-         */
+        let current = toolMap.get(index);
 
         if (!current) {
           current = {
@@ -331,16 +291,10 @@ async function collectStream(
             },
           };
 
-          tools.set(index, current);
+          toolMap.set(index, current);
 
           continue;
         }
-
-        /**
-         * =================================================
-         * 后续 Chunk
-         * =================================================
-         */
 
         if (toolCall.id) {
           current.id += toolCall.id;
@@ -357,38 +311,17 @@ async function collectStream(
     }
   }
 
-  /**
-   * =====================================================
-   * 返回
-   * =====================================================
-   */
-
   return {
     content,
-
     reasoningContent,
 
-    toolCalls: [...tools.values()],
+    toolCalls: [...toolMap.values()],
   };
 }
 
 /**
  * =========================================================
  * Agent
- *
- * 一次用户输入可能触发：
- *
- * User
- * ↓
- * Assistant Tool Call
- * ↓
- * Tool
- * ↓
- * Assistant Tool Call
- * ↓
- * Tool
- * ↓
- * Assistant 最终回答
  * =========================================================
  */
 
@@ -396,85 +329,37 @@ async function runAgent(
   messages: OpenAI.ChatCompletionMessageParam[],
   userMessage: string,
 ): Promise<string> {
-  /**
-   * =====================================================
-   * Tool Calling Loop
-   * =====================================================
-   */
-
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     console.log();
 
     console.log(chalk.blue(`========== Tool Round ${round + 1} ==========`));
 
-    /**
-     * ===================================================
-     * 请求模型
-     * ===================================================
-     */
-
     const response = await client.chat.completions.create({
-      model: "qwen3-0.6b-q4_k_m",
-
-      /**
-       * 非常重要：
-       *
-       * system 只放一次
-       * 后面的 messages 是完整历史
-       */
+      model: MODEL,
 
       messages: [
         {
           role: "system",
-
           content: systemPrompt,
         },
 
         ...messages,
       ],
 
-      /**
-       * Tools
-       */
-
       tools: toolsRegister,
 
-      /**
-       * 自动决定是否调用 Tool
-       */
-
       tool_choice: "auto",
-
-      /**
-       * Stream
-       */
 
       stream: true,
     });
 
-    /**
-     * ===================================================
-     * 收集 Stream
-     * ===================================================
-     */
-
     const result = await collectStream(response);
 
     /**
-     * ===================================================
-     * 没有 Tool Call
-     *
-     * 说明模型已经完成回答
-     * ===================================================
+     * 最终回答
      */
 
     if (result.toolCalls.length === 0) {
-      /**
-       * 保存 Assistant 最终回答
-       *
-       * 这是实现多轮上下文最关键的一步
-       */
-
       messages.push({
         role: "assistant",
 
@@ -485,42 +370,17 @@ async function runAgent(
 
       console.log(chalk.green("\n========== Assistant =========="));
 
+      console.log();
+
       return result.content;
     }
 
     /**
-     * ===================================================
-     * Tool Calls
-     * ===================================================
-     */
-
-    console.log();
-
-    console.log(chalk.yellow("\n========== Tool Calls =========="));
-
-    console.log(JSON.stringify(result.toolCalls, null, 2));
-
-    /**
-     * ===================================================
-     * 构造 Assistant Tool Call
-     * ===================================================
-     *
-     * OpenAI Tool Calling 的消息顺序必须是：
-     *
-     * assistant
-     * ↓
-     * tool
-     *
-     * 不能直接把 tool 丢给模型。
+     * Assistant Tool Call
      */
 
     const assistantMessage: OpenAI.ChatCompletionAssistantMessageParam = {
       role: "assistant",
-
-      /**
-       * 如果模型同时产生普通文本
-       * 也要保留
-       */
 
       content: result.content || null,
 
@@ -537,69 +397,887 @@ async function runAgent(
       })),
     };
 
-    /**
-     * ===================================================
-     * 保存 Assistant Tool Call
-     * ===================================================
-     */
-
     messages.push(assistantMessage);
 
     /**
-     * ===================================================
-     * 并行执行 Tool
-     * ===================================================
+     * 执行 Tool
      */
 
     const toolResults = await Promise.all(
       result.toolCalls.map((toolCall) => executeTool(toolCall, userMessage)),
     );
 
-    /**
-     * ===================================================
-     * 保存 Tool Result
-     * ===================================================
-     */
-
     messages.push(...toolResults);
-
-    /**
-     * ===================================================
-     * 下一轮
-     * ===================================================
-     */
   }
-
-  /**
-   * =====================================================
-   * 超过最大 Tool Calling
-   * =====================================================
-   */
 
   throw new Error(`Tool Calling 超过最大轮数 ${MAX_TOOL_ROUNDS}`);
 }
 
 /**
  * =========================================================
- * CLI
+ * 文件扫描
  * =========================================================
  */
 
-const rl = createInterface({
-  input,
+const IGNORE_DIRS = new Set([
+  "node_modules",
+  ".git",
+  "dist",
+  ".next",
+  ".nuxt",
+  "coverage",
+  ".cache",
+]);
 
-  output,
+function getFiles(root: string, maxDepth = 8): FileItem[] {
+  const result: FileItem[] = [];
 
-  terminal: true,
-});
+  function walk(currentPath: string, depth: number) {
+    if (depth > maxDepth) {
+      return;
+    }
+
+    let entries: fs.Dirent[];
+
+    try {
+      entries = fs.readdirSync(currentPath, {
+        withFileTypes: true,
+      });
+    } catch {
+      return;
+    }
+
+    for (const entry of entries) {
+      if (IGNORE_DIRS.has(entry.name)) {
+        continue;
+      }
+
+      const fullPath = path.join(currentPath, entry.name);
+
+      const relativePath = path.relative(root, fullPath);
+
+      result.push({
+        name: relativePath || entry.name,
+
+        path: fullPath,
+
+        isDirectory: entry.isDirectory(),
+      });
+
+      if (entry.isDirectory()) {
+        walk(fullPath, depth + 1);
+      }
+    }
+  }
+
+  walk(root, 0);
+
+  return result;
+}
 
 /**
  * =========================================================
- * 会话历史
+ * Fuzzy Search
+ * =========================================================
+ */
+
+function fuzzyScore(text: string, query: string): number {
+  if (!query) {
+    return 0;
+  }
+
+  const source = text.toLowerCase();
+
+  const search = query.toLowerCase();
+
+  let position = 0;
+
+  let score = 0;
+
+  for (const char of search) {
+    const index = source.indexOf(char, position);
+
+    if (index === -1) {
+      return -1;
+    }
+
+    if (index === position) {
+      score += 10;
+    } else {
+      score += 1;
+    }
+
+    if (
+      index === 0 ||
+      source[index - 1] === "/" ||
+      source[index - 1] === "\\" ||
+      source[index - 1] === "." ||
+      source[index - 1] === "_" ||
+      source[index - 1] === "-"
+    ) {
+      score += 5;
+    }
+
+    position = index + 1;
+  }
+
+  score -= source.length * 0.01;
+
+  return score;
+}
+
+/**
+ * =========================================================
+ * 文件过滤
+ * =========================================================
+ */
+
+function filterFiles(files: FileItem[], query: string): FileItem[] {
+  if (!query) {
+    return files.slice(0, 15);
+  }
+
+  return files
+    .map((file) => ({
+      file,
+
+      score: fuzzyScore(file.name, query),
+    }))
+    .filter((item) => item.score >= 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 15)
+    .map((item) => item.file);
+}
+
+/**
+ * =========================================================
+ * 命令过滤
+ * =========================================================
+ */
+
+function filterCommands(query: string): CommandItem[] {
+  const normalized = query.replace(/^\//, "").toLowerCase();
+
+  if (!normalized) {
+    return commands;
+  }
+
+  return commands.filter(
+    (item) =>
+      item.command.toLowerCase().includes(normalized) ||
+      item.description.toLowerCase().includes(normalized),
+  );
+}
+
+/**
+ * =========================================================
+ * 清理 Picker
+ * =========================================================
+ */
+
+function clearPicker(lines: number) {
+  if (lines <= 0) {
+    return;
+  }
+
+  for (let i = 0; i < lines; i++) {
+    process.stdout.write("\x1b[2K");
+
+    if (i < lines - 1) {
+      process.stdout.write("\x1b[1A");
+    }
+  }
+
+  process.stdout.write("\r");
+}
+
+/**
+ * =========================================================
+ * Picker
+ * =========================================================
+ */
+
+function openPicker(
+  mode: Exclude<PickerMode, null>,
+  query: string,
+): Promise<string | null> {
+  let selectedIndex = 0;
+
+  let renderedLines = 0;
+
+  let currentQuery = query;
+
+  process.stdin.setRawMode?.(true);
+
+  process.stdin.resume();
+
+  process.stdin.setEncoding("utf8");
+
+  process.stdout.write(ANSI.hideCursor);
+
+  const getItems = () => {
+    if (mode === "file") {
+      return filterFiles(getFiles(projectDir), currentQuery);
+    }
+
+    return filterCommands(currentQuery);
+  };
+
+  const render = () => {
+    if (renderedLines > 0) {
+      clearPicker(renderedLines);
+    }
+
+    const items = getItems();
+
+    if (selectedIndex >= items.length) {
+      selectedIndex = Math.max(0, items.length - 1);
+    }
+
+    /**
+     * Header
+     */
+
+    if (mode === "file") {
+      console.log(chalk.cyan(`╭─ @ ${currentQuery}`));
+    } else {
+      console.log(chalk.magenta(`╭─ / ${currentQuery.replace(/^\//, "")}`));
+    }
+
+    /**
+     * 内容
+     */
+
+    if (items.length === 0) {
+      console.log(chalk.gray("│  没有匹配项"));
+
+      console.log(chalk.gray("╰─ ↑ ↓ 选择  Enter 确认  Esc 取消"));
+
+      renderedLines = 3;
+
+      return;
+    }
+
+    for (let i = 0; i < items.length; i++) {
+      const selected = i === selectedIndex;
+
+      if (mode === "file") {
+        const file = items[i] as FileItem;
+
+        const icon = file.isDirectory ? "📁" : "📄";
+
+        const line = `${selected ? "❯" : " "} ${icon} ${file.name}`;
+
+        console.log(selected ? chalk.black.bgWhite(line) : chalk.gray(line));
+      } else {
+        const command = items[i] as CommandItem;
+
+        const line = `${selected ? "❯" : " "} ${command.command.padEnd(
+          12,
+        )} ${command.description}`;
+
+        console.log(selected ? chalk.black.bgWhite(line) : chalk.gray(line));
+      }
+    }
+
+    console.log(chalk.gray("╰─ ↑ ↓ 选择  Enter 确认  Esc 取消"));
+
+    renderedLines = items.length + 2;
+  };
+
+  render();
+
+  return new Promise((resolve) => {
+    const cleanup = () => {
+      process.stdin.removeListener("data", onData);
+
+      process.stdin.setRawMode?.(false);
+
+      process.stdin.pause();
+
+      process.stdout.write(ANSI.showCursor);
+
+      if (renderedLines > 0) {
+        clearPicker(renderedLines);
+      }
+    };
+
+    const finish = (value: string | null) => {
+      cleanup();
+
+      resolve(value);
+    };
+
+    const onData = (key: string) => {
+      /**
+       * Ctrl+C
+       *
+       * 只关闭 Picker
+       * 不退出程序
+       */
+
+      if (key === "\u0003") {
+        finish(null);
+
+        return;
+      }
+
+      /**
+       * Esc
+       *
+       * 只关闭 Picker
+       */
+
+      if (key === "\x1b") {
+        finish(null);
+
+        return;
+      }
+
+      /**
+       * Enter
+       */
+
+      if (key === "\r" || key === "\n") {
+        const items = getItems();
+
+        const item = items[selectedIndex];
+
+        if (!item) {
+          return;
+        }
+
+        if (mode === "file") {
+          const file = item as FileItem;
+
+          finish(path.relative(process.cwd(), file.path));
+        } else {
+          const command = item as CommandItem;
+
+          finish(command.command);
+        }
+
+        return;
+      }
+
+      /**
+       * Up
+       */
+
+      if (key === "\x1b[A") {
+        selectedIndex = Math.max(0, selectedIndex - 1);
+
+        render();
+
+        return;
+      }
+
+      /**
+       * Down
+       */
+
+      if (key === "\x1b[B") {
+        const items = getItems();
+
+        selectedIndex = Math.min(
+          Math.max(0, items.length - 1),
+          selectedIndex + 1,
+        );
+
+        render();
+
+        return;
+      }
+
+      /**
+       * Backspace
+       */
+
+      if (key === "\x7f" || key === "\b") {
+        currentQuery = currentQuery.slice(0, -1);
+
+        selectedIndex = 0;
+
+        render();
+
+        return;
+      }
+
+      /**
+       * 普通字符
+       */
+
+      if (key.length === 1 && key >= " ") {
+        currentQuery += key;
+
+        selectedIndex = 0;
+
+        render();
+      }
+    };
+
+    process.stdin.on("data", onData);
+  });
+}
+
+/**
+ * =========================================================
+ * 找到当前 @ / /
+ * =========================================================
+ */
+
+function findTrigger(text: string, cursor: number, trigger: "@" | "/") {
+  const before = text.slice(0, cursor);
+
+  const index = before.lastIndexOf(trigger);
+
+  if (index === -1) {
+    return null;
+  }
+
+  /**
+   * 必须是：
+   *
+   * @xxx
+   *
+   * 或
+   *
+   * /xxx
+   *
+   * 前面必须是空白或者开头
+   */
+
+  if (index > 0 && !/\s/.test(text[index - 1])) {
+    return null;
+  }
+
+  const query = text.slice(index + 1, cursor);
+
+  return {
+    index,
+    query,
+  };
+}
+
+/**
+ * =========================================================
+ * 输入框
  *
- * 整个程序生命周期只创建一次
+ * Enter:
+ *   提交
  *
- * 所有用户输入都保存在这里
+ * Shift + Enter:
+ *   换行
+ *
+ * @:
+ *   文件选择
+ *
+ * /:
+ *   命令选择
+ *
+ * Esc:
+ *   取消 Picker
+ * =========================================================
+ */
+
+function readUserInput(): Promise<string | null> {
+  let text = "";
+
+  let cursor = 0;
+
+  let pickerOpen = false;
+
+  /**
+   * =======================================================
+   * Render
+   * =======================================================
+   */
+
+  const render = () => {
+    /**
+     * 清理输入区域
+     */
+
+    process.stdout.write("\r\x1b[2K");
+
+    /**
+     * 多行输入
+     */
+
+    const lines = text.split("\n");
+
+    for (let i = 0; i < lines.length; i++) {
+      if (i === 0) {
+        process.stdout.write(chalk.green("You › "));
+      } else {
+        process.stdout.write(chalk.green("    │ "));
+      }
+
+      process.stdout.write(lines[i]);
+
+      if (i < lines.length - 1) {
+        process.stdout.write("\n");
+      }
+    }
+
+    /**
+     * 光标重新定位
+     *
+     * 简化处理：
+     * 将光标移动到最后。
+     */
+
+    const tail = text.length - cursor;
+
+    if (tail > 0) {
+      process.stdout.write(ANSI.cursorLeft(tail));
+    }
+  };
+
+  /**
+   * 初始
+   */
+
+  process.stdout.write(chalk.green("You › "));
+
+  process.stdin.setRawMode?.(true);
+
+  process.stdin.resume();
+
+  process.stdin.setEncoding("utf8");
+
+  /**
+   * =======================================================
+   * Promise
+   * =======================================================
+   */
+
+  return new Promise((resolve) => {
+    const cleanup = () => {
+      process.stdin.removeListener("data", onData);
+
+      process.stdin.setRawMode?.(false);
+
+      process.stdin.pause();
+
+      process.stdout.write(ANSI.showCursor);
+    };
+
+    const finish = (value: string | null) => {
+      cleanup();
+
+      console.log();
+
+      resolve(value);
+    };
+
+    /**
+     * ===================================================
+     * 插入文本
+     * ===================================================
+     */
+
+    const insertText = (value: string) => {
+      text = text.slice(0, cursor) + value + text.slice(cursor);
+
+      cursor += value.length;
+
+      render();
+    };
+
+    /**
+     * ===================================================
+     * 删除当前 Trigger
+     * ===================================================
+     */
+
+    const replaceTrigger = (trigger: "@" | "/", value: string) => {
+      const target = findTrigger(text, cursor, trigger);
+
+      if (!target) {
+        return;
+      }
+
+      const before = text.slice(0, target.index);
+
+      const after = text.slice(cursor);
+
+      text = before + value + after;
+
+      cursor = before.length + value.length;
+
+      render();
+    };
+
+    /**
+     * ===================================================
+     * Data
+     * ===================================================
+     */
+
+    const onData = async (key: string) => {
+      /**
+       * Picker 已打开
+       *
+       * Picker 自己接管 stdin
+       */
+
+      if (pickerOpen) {
+        return;
+      }
+
+      /**
+       * =================================================
+       * Ctrl+C
+       *
+       * 不退出程序
+       * 清空当前输入
+       * =================================================
+       */
+
+      if (key === "\u0003") {
+        text = "";
+
+        cursor = 0;
+
+        render();
+
+        return;
+      }
+
+      /**
+       * =================================================
+       * Enter
+       *
+       * 普通 Enter = 提交
+       *
+       * =================================================
+       */
+
+      if (key === "\r") {
+        if (!text.trim()) {
+          return;
+        }
+
+        finish(text);
+
+        return;
+      }
+
+      /**
+       * =================================================
+       * Shift + Enter
+       *
+       * =================================================
+       *
+       * 注意：
+       *
+       * 终端通常不会把 Shift+Enter
+       * 和普通 Enter 区分成同一个标准
+       * 控制字符。
+       *
+       * 常见终端可以通过：
+       *
+       * \x1b[13;2u
+       *
+       * 或：
+       *
+       * \x1b[27;2;13~
+       *
+       * 传递 CSI u / modifyOtherKeys。
+       *
+       */
+
+      if (key === "\x1b[13;2u" || key === "\x1b[27;2;13~") {
+        insertText("\n");
+
+        return;
+      }
+
+      /**
+       * 某些终端 Shift+Enter
+       * 会直接发送 LF
+       */
+
+      if (key === "\n") {
+        insertText("\n");
+
+        return;
+      }
+
+      /**
+       * =================================================
+       * @ 文件选择
+       * =================================================
+       */
+
+      if (key === "@") {
+        insertText("@");
+
+        const target = findTrigger(text, cursor, "@");
+
+        if (!target) {
+          return;
+        }
+
+        pickerOpen = true;
+
+        const selected = await openPicker("file", target.query);
+
+        pickerOpen = false;
+
+        if (!selected) {
+          render();
+
+          return;
+        }
+
+        replaceTrigger("@", `@${selected}`);
+
+        return;
+      }
+
+      /**
+       * =================================================
+       * / 命令选择
+       * =================================================
+       */
+
+      if (key === "/") {
+        insertText("/");
+
+        const target = findTrigger(text, cursor, "/");
+
+        if (!target) {
+          return;
+        }
+
+        pickerOpen = true;
+
+        const selected = await openPicker("command", target.query);
+
+        pickerOpen = false;
+
+        if (!selected) {
+          render();
+
+          return;
+        }
+
+        replaceTrigger("/", selected);
+
+        return;
+      }
+
+      /**
+       * =================================================
+       * Esc
+       *
+       * 普通输入状态下：
+       * 不退出
+       * 不提交
+       *
+       * =================================================
+       */
+
+      if (key === "\x1b") {
+        render();
+
+        return;
+      }
+
+      /**
+       * =================================================
+       * Backspace
+       * =================================================
+       */
+
+      if (key === "\x7f" || key === "\b") {
+        if (cursor > 0) {
+          text = text.slice(0, cursor - 1) + text.slice(cursor);
+
+          cursor--;
+
+          render();
+        }
+
+        return;
+      }
+
+      /**
+       * =================================================
+       * 左
+       * =================================================
+       */
+
+      if (key === "\x1b[D") {
+        cursor = Math.max(0, cursor - 1);
+
+        render();
+
+        return;
+      }
+
+      /**
+       * =================================================
+       * 右
+       * =================================================
+       */
+
+      if (key === "\x1b[C") {
+        cursor = Math.min(text.length, cursor + 1);
+
+        render();
+
+        return;
+      }
+
+      /**
+       * =================================================
+       * Home
+       * =================================================
+       */
+
+      if (key === "\x1b[H") {
+        cursor = 0;
+
+        render();
+
+        return;
+      }
+
+      /**
+       * =================================================
+       * End
+       * =================================================
+       */
+
+      if (key === "\x1b[F") {
+        cursor = text.length;
+
+        render();
+
+        return;
+      }
+
+      /**
+       * =================================================
+       * 普通字符
+       * =================================================
+       */
+
+      if (key.length === 1 && key >= " ") {
+        insertText(key);
+      }
+    };
+
+    process.stdin.on("data", onData);
+  });
+}
+
+/**
+ * =========================================================
+ * History
  * =========================================================
  */
 
@@ -607,26 +1285,26 @@ const messages: OpenAI.ChatCompletionMessageParam[] = [];
 
 /**
  * =========================================================
- * 打印 Banner
+ * Banner
  * =========================================================
  */
 
 function printBanner() {
   console.log();
 
-  console.log(chalk.cyan("╔════════════════════════════════════════════╗"));
+  console.log(chalk.cyan("╔══════════════════════════════════════════════╗"));
 
-  console.log(chalk.cyan("║                                            ║"));
+  console.log(chalk.cyan("║              🤖 Local Agent                 ║"));
 
-  console.log(chalk.cyan("║          🤖 Local AI Agent CLI             ║"));
-
-  console.log(chalk.cyan("║                                            ║"));
-
-  console.log(chalk.cyan("╚════════════════════════════════════════════╝"));
+  console.log(chalk.cyan("╚══════════════════════════════════════════════╝"));
 
   console.log();
 
-  console.log(chalk.gray("输入 /help 查看帮助"));
+  console.log(chalk.gray(" @ 文件    / 命令    Shift+Enter 换行"));
+
+  console.log(chalk.gray(" Enter 提交    Esc 取消选择"));
+
+  console.log();
 }
 
 /**
@@ -638,65 +1316,49 @@ function printBanner() {
 function printHelp() {
   console.log();
 
-  console.log(chalk.cyan("可用命令:"));
+  console.log(chalk.cyan("命令:"));
+
+  console.log("  /help      查看帮助");
+
+  console.log("  /clear     清空上下文");
+
+  console.log("  /history   查看历史");
+
+  console.log("  /exit      退出");
 
   console.log();
 
-  console.log(chalk.gray("  /help"), "      查看帮助");
+  console.log(chalk.cyan("输入:"));
 
-  console.log(chalk.gray("  /clear"), "     清空当前会话");
+  console.log("  @          文件选择");
 
-  console.log(chalk.gray("  /history"), "   查看历史消息");
+  console.log("  @src       模糊搜索文件");
 
-  console.log(chalk.gray("  /exit"), "      退出程序");
+  console.log("  /          命令选择");
 
-  console.log(chalk.gray("  /quit"), "      退出程序");
+  console.log("  Shift+Enter 多行输入");
 
   console.log();
 }
 
 /**
  * =========================================================
- * 打印历史
+ * History
  * =========================================================
  */
 
 function printHistory() {
   console.log();
 
-  console.log(chalk.cyan(`当前共有 ${messages.length} 条消息`));
+  console.log(chalk.cyan(`历史消息: ${messages.length}`));
 
   console.log();
 
   messages.forEach((message, index) => {
-    console.log(chalk.gray(`[${index}]`), chalk.yellow(message.role));
+    console.log(chalk.gray(`[${index}] ${message.role}`));
 
-    /**
-     * Assistant Tool Calls
-     */
-
-    if (
-      message.role === "assistant" &&
-      "tool_calls" in message &&
-      message.tool_calls
-    ) {
-      console.log(chalk.gray(JSON.stringify(message.tool_calls, null, 2)));
-
-      return;
-    }
-
-    /**
-     * 普通 Content
-     */
-
-    if ("content" in message) {
-      console.log(
-        chalk.gray(
-          typeof message.content === "string"
-            ? message.content
-            : JSON.stringify(message.content),
-        ),
-      );
+    if ("content" in message && typeof message.content === "string") {
+      console.log(message.content);
     }
 
     console.log();
@@ -710,17 +1372,7 @@ function printHistory() {
  */
 
 async function main() {
-  /**
-   * Banner
-   */
-
   printBanner();
-
-  /**
-   * =======================================================
-   * 无限等待用户输入
-   * =======================================================
-   */
 
   while (true) {
     try {
@@ -730,14 +1382,23 @@ async function main() {
        * ===================================================
        */
 
-      const userInput = await rl.question(chalk.green("\nYou › "));
+      const userInput = await readUserInput();
+
+      /**
+       * Ctrl+C
+       *
+       * readUserInput 返回 null
+       * 才退出
+       */
+
+      if (userInput === null) {
+        break;
+      }
 
       const text = userInput.trim();
 
       /**
-       * ===================================================
-       * 空输入
-       * ===================================================
+       * 空消息
        */
 
       if (!text) {
@@ -775,9 +1436,7 @@ async function main() {
       if (text === "/clear") {
         messages.length = 0;
 
-        console.log();
-
-        console.log(chalk.yellow("✓ 会话历史已清空"));
+        console.log(chalk.yellow("\n✓ 会话上下文已清空\n"));
 
         continue;
       }
@@ -796,53 +1455,48 @@ async function main() {
 
       /**
        * ===================================================
-       * 保存 User Message
+       * 用户消息
+       *
+       * 这里非常重要：
+       *
+       * 每一轮都保留 messages
+       *
        * ===================================================
-       *
-       * 注意：
-       *
-       * 这里保存一次。
-       *
-       * runAgent 内部不要再保存 User。
        */
 
       messages.push({
         role: "user",
 
-        content: text,
+        content: userInput,
       });
 
       /**
        * ===================================================
-       * 执行 Agent
+       * Agent
        * ===================================================
        */
 
-      await runAgent(messages, text);
+      await runAgent(messages, userInput);
     } catch (error) {
-      /**
-       * ===================================================
-       * 单轮错误
-       *
-       * 不退出整个 CLI
-       * ===================================================
-       */
-
       console.error();
 
-      console.error(chalk.red("Agent Error:"));
+      console.error(chalk.red(`Agent Error: ${String(error)}`));
 
-      console.error(chalk.red(String(error)));
+      console.error();
     }
   }
 
   /**
    * =======================================================
-   * 关闭 readline
+   * Cleanup
    * =======================================================
    */
 
-  rl.close();
+  process.stdin.setRawMode?.(false);
+
+  process.stdin.pause();
+
+  process.stdout.write(ANSI.showCursor);
 
   console.log();
 
@@ -851,20 +1505,17 @@ async function main() {
 
 /**
  * =========================================================
- * 启动程序
+ * 启动
  *
  * 注意：
  *
  * 这里没有顶层 await
+ *
  * =========================================================
  */
 
 main().catch((error) => {
-  console.error();
-
-  console.error(chalk.red("程序异常:"));
-
-  console.error(chalk.red(String(error)));
+  console.error(chalk.red(`程序异常: ${String(error)}`));
 
   process.exit(1);
 });
