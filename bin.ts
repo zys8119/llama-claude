@@ -363,8 +363,7 @@ async function chatMessage(
 const result = await chatMessage(
   systemPrompt,
   [
-    // "创建文件test.txt，并写入内容hello world",
-    `当前目录下的所有文件目录结果`,
+    `目录文件`,
     // "当前项目目录路径",
   ]
     .map((item) => item.trim())
