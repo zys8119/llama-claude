@@ -1,18 +1,17 @@
 import * as z from "zod";
-import { exec } from "child_process";
+import { execSync } from "child_process";
 import chalk from "chalk";
 
-export const runCommand = async (args: { command: string }) => {
-  const { command } = args;
+export const runCommand = async (args: { command: string; cwd: string }) => {
+  const { command, cwd } = args;
 
-  console.log(chalk.yellow(`[run_command] ${command}`));
+  console.log(chalk.yellow(`[run_command] ${command} ${cwd}`));
 
   try {
-    const { stdout, stderr } = await exec(command);
+    const output = execSync(command, { cwd }).toString();
 
     return {
-      stdout,
-      stderr,
+      output,
     };
   } catch (err) {
     return `命令执行失败：${err}`;
@@ -27,6 +26,7 @@ export default {
     parameters: z
       .object({
         command: z.string().describe("命令"),
+        cwd: z.string().describe("工作目录"),
       })
       .toJSONSchema(),
   },

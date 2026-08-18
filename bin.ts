@@ -10,7 +10,6 @@ const client = new OpenAI({
   apiKey: "ollama",
   baseURL: "http://127.0.0.1:8080",
 });
-
 const MAX_TOOL_ROUNDS = 10;
 
 _.templateSettings.interpolate = /{{([\s\S]+?)}}/g;
@@ -365,7 +364,7 @@ const result = await chatMessage(
   systemPrompt,
   [
     // "创建文件test.txt，并写入内容hello world",
-    `test.ts 文件中实现冒泡排序`,
+    `当前目录下的所有文件目录结果`,
     // "当前项目目录路径",
   ]
     .map((item) => item.trim())
