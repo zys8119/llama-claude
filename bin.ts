@@ -9,19 +9,34 @@ import { stdin as input, stdout as output } from "process";
 
 import toolsRegister from "./tools.ts";
 
+/**
+ * =========================================================
+ * OpenAI Client
+ * =========================================================
+ */
+
 const client = new OpenAI({
   apiKey: "ollama",
   baseURL: "http://127.0.0.1:8080",
 });
 
+/**
+ * Tool Calling 最大轮数
+ */
 const MAX_TOOL_ROUNDS = 10;
+
+/**
+ * =========================================================
+ * Lodash Template
+ * =========================================================
+ */
 
 _.templateSettings.interpolate = /{{([\s\S]+?)}}/g;
 
 /**
- * =========================
+ * =========================================================
  * System Prompt
- * =========================
+ * =========================================================
  */
 
 const systemPrompt = _.template(
@@ -32,29 +47,34 @@ const systemPrompt = _.template(
     .join("\n"),
 )({
   current_time: dayjs().format("YYYY-MM-DD HH:mm:ss"),
+
   project_dir: path.resolve(import.meta.dirname, "./dist"),
 });
 
 /**
- * =========================
- * 类型
- * =========================
+ * =========================================================
+ * Tool Call 类型
+ * =========================================================
  */
 
 type ToolCall = {
   index: number;
+
   id: string;
+
   type: "function";
+
   function: {
     name: string;
+
     arguments: string;
   };
 };
 
 /**
- * =========================
+ * =========================================================
  * 查找工具
- * =========================
+ * =========================================================
  */
 
 function findTool(name: string) {
@@ -64,72 +84,132 @@ function findTool(name: string) {
 }
 
 /**
- * =========================
- * 执行工具
- * =========================
+ * =========================================================
+ * 执行 Tool
+ * =========================================================
  */
 
 async function executeTool(
   toolCall: ToolCall,
   userMessage: string,
 ): Promise<OpenAI.ChatCompletionToolMessageParam> {
+  /**
+   * 查找工具
+   */
+
   const tool = findTool(toolCall.function.name);
 
+  /**
+   * 工具不存在
+   */
+
   if (!tool) {
+    console.error(chalk.red(`\n工具不存在: ${toolCall.function.name}`));
+
     return {
       role: "tool",
+
       tool_call_id: toolCall.id,
+
       content: JSON.stringify({
         success: false,
+
         error: `工具 ${toolCall.function.name} 不存在`,
       }),
     };
   }
 
+  /**
+   * =====================================================
+   * 解析参数
+   * =====================================================
+   */
+
   let args: any;
 
   try {
     args = JSON.parse(toolCall.function.arguments || "{}");
-  } catch {
-    console.error(
-      chalk.red(`\n工具参数解析失败: ${toolCall.function.arguments}`),
-    );
+  } catch (error) {
+    console.error(chalk.red(`\n工具参数解析失败:`));
+
+    console.error(chalk.gray(toolCall.function.arguments));
 
     return {
       role: "tool",
+
       tool_call_id: toolCall.id,
+
       content: JSON.stringify({
         success: false,
+
         error: "工具参数 JSON 解析失败",
+
         arguments: toolCall.function.arguments,
       }),
     };
   }
 
-  console.log(chalk.cyan(`\n\n调用工具: ${toolCall.function.name}`));
+  /**
+   * =====================================================
+   * 打印 Tool
+   * =====================================================
+   */
+
+  console.log();
+
+  console.log(chalk.cyan("┌──────────────────────────────────────"));
+
+  console.log(chalk.cyan(`│ 🔧 Tool: ${toolCall.function.name}`));
+
+  console.log(chalk.cyan("└──────────────────────────────────────"));
 
   console.log(chalk.gray(JSON.stringify(args, null, 2)));
+
+  /**
+   * =====================================================
+   * 执行 Tool
+   * =====================================================
+   */
 
   try {
     const result = await (tool as any).callback(args, userMessage);
 
-    console.log(chalk.green(`工具执行结果: ${toolCall.function.name}`));
+    /**
+     * 打印结果
+     */
+
+    console.log(chalk.green(`\n✓ Tool 执行成功: ${toolCall.function.name}`));
 
     console.log(chalk.gray(JSON.stringify(result, null, 2)));
 
-    return {
-      role: "tool",
-      tool_call_id: toolCall.id,
-      content: JSON.stringify(result),
-    };
-  } catch (error) {
-    console.error(chalk.red(`工具执行失败: ${String(error)}`));
+    /**
+     * 返回 Tool Message
+     */
 
     return {
       role: "tool",
+
       tool_call_id: toolCall.id,
+
+      content: JSON.stringify(result),
+    };
+  } catch (error) {
+    /**
+     * Tool 执行失败
+     */
+
+    console.error(chalk.red(`\n✗ Tool 执行失败: ${toolCall.function.name}`));
+
+    console.error(chalk.red(String(error)));
+
+    return {
+      role: "tool",
+
+      tool_call_id: toolCall.id,
+
       content: JSON.stringify({
         success: false,
+
         error: String(error),
       }),
     };
@@ -137,18 +217,45 @@ async function executeTool(
 }
 
 /**
- * =========================
- * Stream
- * =========================
+ * =========================================================
+ * 收集 Stream
+ *
+ * 处理：
+ *
+ * content
+ * reasoning_content
+ * tool_calls
+ * =========================================================
  */
 
 async function collectStream(
   response: AsyncIterable<OpenAI.ChatCompletionChunk>,
 ) {
+  /**
+   * Tool Calls
+   *
+   * key = tool index
+   */
+
   const tools = new Map<number, ToolCall>();
 
+  /**
+   * 普通文本
+   */
+
   let content = "";
+
+  /**
+   * Reasoning
+   */
+
   let reasoningContent = "";
+
+  /**
+   * =====================================================
+   * Stream
+   * =====================================================
+   */
 
   for await (const chunk of response) {
     const delta = chunk.choices[0]?.delta;
@@ -158,8 +265,11 @@ async function collectStream(
     }
 
     /**
+     * ===================================================
      * 普通文本
+     * ===================================================
      */
+
     if (delta.content) {
       content += delta.content;
 
@@ -167,8 +277,11 @@ async function collectStream(
     }
 
     /**
-     * Qwen reasoning
+     * ===================================================
+     * Reasoning
+     * ===================================================
      */
+
     const reasoning = (delta as any).reasoning_content;
 
     if (reasoning) {
@@ -178,21 +291,37 @@ async function collectStream(
     }
 
     /**
+     * ===================================================
      * Tool Calls
+     * ===================================================
      */
+
     if (delta.tool_calls) {
       for (const toolCall of delta.tool_calls) {
+        /**
+         * Tool index
+         */
+
         const index = toolCall.index ?? 0;
+
+        /**
+         * 当前 Tool
+         */
 
         let current = tools.get(index);
 
         /**
-         * 第一个 chunk
+         * =================================================
+         * 第一个 Chunk
+         * =================================================
          */
+
         if (!current) {
           current = {
             index,
+
             id: toolCall.id || "",
+
             type: "function",
 
             function: {
@@ -208,7 +337,9 @@ async function collectStream(
         }
 
         /**
-         * 后续 chunk
+         * =================================================
+         * 后续 Chunk
+         * =================================================
          */
 
         if (toolCall.id) {
@@ -226,91 +357,170 @@ async function collectStream(
     }
   }
 
+  /**
+   * =====================================================
+   * 返回
+   * =====================================================
+   */
+
   return {
     content,
+
     reasoningContent,
+
     toolCalls: [...tools.values()],
   };
 }
 
 /**
- * =========================
+ * =========================================================
  * Agent
  *
- * 一次用户输入可能触发多轮 Tool Calling
- * =========================
+ * 一次用户输入可能触发：
+ *
+ * User
+ * ↓
+ * Assistant Tool Call
+ * ↓
+ * Tool
+ * ↓
+ * Assistant Tool Call
+ * ↓
+ * Tool
+ * ↓
+ * Assistant 最终回答
+ * =========================================================
  */
 
 async function runAgent(
   messages: OpenAI.ChatCompletionMessageParam[],
   userMessage: string,
 ): Promise<string> {
+  /**
+   * =====================================================
+   * Tool Calling Loop
+   * =====================================================
+   */
+
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-    console.log(chalk.blue(`\n========== Tool Round ${round + 1} ==========`));
+    console.log();
+
+    console.log(chalk.blue(`========== Tool Round ${round + 1} ==========`));
+
+    /**
+     * ===================================================
+     * 请求模型
+     * ===================================================
+     */
 
     const response = await client.chat.completions.create({
       model: "qwen3-0.6b-q4_k_m",
 
+      /**
+       * 非常重要：
+       *
+       * system 只放一次
+       * 后面的 messages 是完整历史
+       */
+
       messages: [
         {
           role: "system",
+
           content: systemPrompt,
         },
+
         ...messages,
       ],
 
+      /**
+       * Tools
+       */
+
       tools: toolsRegister,
 
+      /**
+       * 自动决定是否调用 Tool
+       */
+
       tool_choice: "auto",
+
+      /**
+       * Stream
+       */
 
       stream: true,
     });
 
+    /**
+     * ===================================================
+     * 收集 Stream
+     * ===================================================
+     */
+
     const result = await collectStream(response);
 
     /**
-     * =========================
+     * ===================================================
      * 没有 Tool Call
      *
-     * 说明模型已经最终回答
-     * =========================
+     * 说明模型已经完成回答
+     * ===================================================
      */
 
     if (result.toolCalls.length === 0) {
       /**
-       * 非常重要：
+       * 保存 Assistant 最终回答
        *
-       * 把 Assistant 最终回答保存到历史
+       * 这是实现多轮上下文最关键的一步
        */
 
       messages.push({
         role: "assistant",
+
         content: result.content,
       });
 
-      console.log(chalk.green("\n\n========== Assistant =========="));
+      console.log();
+
+      console.log(chalk.green("\n========== Assistant =========="));
 
       return result.content;
     }
 
     /**
-     * =========================
+     * ===================================================
      * Tool Calls
-     * =========================
+     * ===================================================
      */
 
-    console.log(chalk.yellow("\n\n========== Tool Calls =========="));
+    console.log();
+
+    console.log(chalk.yellow("\n========== Tool Calls =========="));
 
     console.log(JSON.stringify(result.toolCalls, null, 2));
 
     /**
-     * =========================
-     * 保存 Assistant Tool Call
-     * =========================
+     * ===================================================
+     * 构造 Assistant Tool Call
+     * ===================================================
+     *
+     * OpenAI Tool Calling 的消息顺序必须是：
+     *
+     * assistant
+     * ↓
+     * tool
+     *
+     * 不能直接把 tool 丢给模型。
      */
 
     const assistantMessage: OpenAI.ChatCompletionAssistantMessageParam = {
       role: "assistant",
+
+      /**
+       * 如果模型同时产生普通文本
+       * 也要保留
+       */
 
       content: result.content || null,
 
@@ -327,12 +537,18 @@ async function runAgent(
       })),
     };
 
+    /**
+     * ===================================================
+     * 保存 Assistant Tool Call
+     * ===================================================
+     */
+
     messages.push(assistantMessage);
 
     /**
-     * =========================
-     * 执行 Tool
-     * =========================
+     * ===================================================
+     * 并行执行 Tool
+     * ===================================================
      */
 
     const toolResults = await Promise.all(
@@ -340,71 +556,188 @@ async function runAgent(
     );
 
     /**
-     * =========================
+     * ===================================================
      * 保存 Tool Result
-     * =========================
+     * ===================================================
      */
 
     messages.push(...toolResults);
 
     /**
-     * 下一轮继续请求模型
+     * ===================================================
+     * 下一轮
+     * ===================================================
      */
   }
+
+  /**
+   * =====================================================
+   * 超过最大 Tool Calling
+   * =====================================================
+   */
 
   throw new Error(`Tool Calling 超过最大轮数 ${MAX_TOOL_ROUNDS}`);
 }
 
 /**
- * =========================
+ * =========================================================
  * CLI
- * =========================
+ * =========================================================
  */
 
 const rl = createInterface({
   input,
+
   output,
 
   terminal: true,
 });
 
 /**
- * 整个会话历史
+ * =========================================================
+ * 会话历史
  *
- * 这里非常重要。
+ * 整个程序生命周期只创建一次
  *
- * 不要每次用户输入都重新创建。
+ * 所有用户输入都保存在这里
+ * =========================================================
  */
 
 const messages: OpenAI.ChatCompletionMessageParam[] = [];
 
 /**
- * 当前会话
+ * =========================================================
+ * 打印 Banner
+ * =========================================================
+ */
+
+function printBanner() {
+  console.log();
+
+  console.log(chalk.cyan("╔════════════════════════════════════════════╗"));
+
+  console.log(chalk.cyan("║                                            ║"));
+
+  console.log(chalk.cyan("║          🤖 Local AI Agent CLI             ║"));
+
+  console.log(chalk.cyan("║                                            ║"));
+
+  console.log(chalk.cyan("╚════════════════════════════════════════════╝"));
+
+  console.log();
+
+  console.log(chalk.gray("输入 /help 查看帮助"));
+}
+
+/**
+ * =========================================================
+ * Help
+ * =========================================================
+ */
+
+function printHelp() {
+  console.log();
+
+  console.log(chalk.cyan("可用命令:"));
+
+  console.log();
+
+  console.log(chalk.gray("  /help"), "      查看帮助");
+
+  console.log(chalk.gray("  /clear"), "     清空当前会话");
+
+  console.log(chalk.gray("  /history"), "   查看历史消息");
+
+  console.log(chalk.gray("  /exit"), "      退出程序");
+
+  console.log(chalk.gray("  /quit"), "      退出程序");
+
+  console.log();
+}
+
+/**
+ * =========================================================
+ * 打印历史
+ * =========================================================
+ */
+
+function printHistory() {
+  console.log();
+
+  console.log(chalk.cyan(`当前共有 ${messages.length} 条消息`));
+
+  console.log();
+
+  messages.forEach((message, index) => {
+    console.log(chalk.gray(`[${index}]`), chalk.yellow(message.role));
+
+    /**
+     * Assistant Tool Calls
+     */
+
+    if (
+      message.role === "assistant" &&
+      "tool_calls" in message &&
+      message.tool_calls
+    ) {
+      console.log(chalk.gray(JSON.stringify(message.tool_calls, null, 2)));
+
+      return;
+    }
+
+    /**
+     * 普通 Content
+     */
+
+    if ("content" in message) {
+      console.log(
+        chalk.gray(
+          typeof message.content === "string"
+            ? message.content
+            : JSON.stringify(message.content),
+        ),
+      );
+    }
+
+    console.log();
+  });
+}
+
+/**
+ * =========================================================
+ * Main
+ * =========================================================
  */
 
 async function main() {
-  console.log(chalk.cyan("\n╔══════════════════════════════════════╗"));
+  /**
+   * Banner
+   */
 
-  console.log(chalk.cyan("║        Local AI Agent CLI            ║"));
+  printBanner();
 
-  console.log(chalk.cyan("╚══════════════════════════════════════╝"));
-
-  console.log(chalk.gray("\n输入 /help 查看命令"));
+  /**
+   * =======================================================
+   * 无限等待用户输入
+   * =======================================================
+   */
 
   while (true) {
     try {
       /**
-       * =========================
-       * 等待用户输入
-       * =========================
+       * ===================================================
+       * 输入
+       * ===================================================
        */
 
-      const userMessage = await rl.question(chalk.green("\nYou › "));
+      const userInput = await rl.question(chalk.green("\nYou › "));
 
-      const text = userMessage.trim();
+      const text = userInput.trim();
 
       /**
+       * ===================================================
        * 空输入
+       * ===================================================
        */
 
       if (!text) {
@@ -412,9 +745,9 @@ async function main() {
       }
 
       /**
-       * =========================
-       * CLI 命令
-       * =========================
+       * ===================================================
+       * Exit
+       * ===================================================
        */
 
       if (text === "/exit" || text === "/quit") {
@@ -422,11 +755,27 @@ async function main() {
       }
 
       /**
-       * 清空历史
+       * ===================================================
+       * Help
+       * ===================================================
+       */
+
+      if (text === "/help") {
+        printHelp();
+
+        continue;
+      }
+
+      /**
+       * ===================================================
+       * Clear
+       * ===================================================
        */
 
       if (text === "/clear") {
         messages.length = 0;
+
+        console.log();
 
         console.log(chalk.yellow("✓ 会话历史已清空"));
 
@@ -434,59 +783,88 @@ async function main() {
       }
 
       /**
-       * 查看历史数量
+       * ===================================================
+       * History
+       * ===================================================
        */
 
       if (text === "/history") {
-        console.log(chalk.gray(`当前历史消息: ${messages.length}`));
+        printHistory();
 
         continue;
       }
 
       /**
-       * 帮助
-       */
-
-      if (text === "/help") {
-        console.log(`
-${chalk.cyan("可用命令：")}
-
-  /help      查看帮助
-  /clear     清空当前会话
-  /history   查看历史消息数量
-  /exit      退出
-        `);
-
-        continue;
-      }
-
-      /**
-       * =========================
-       * 保存用户消息
-       * =========================
+       * ===================================================
+       * 保存 User Message
+       * ===================================================
+       *
+       * 注意：
+       *
+       * 这里保存一次。
+       *
+       * runAgent 内部不要再保存 User。
        */
 
       messages.push({
         role: "user",
+
         content: text,
       });
 
       /**
-       * =========================
-       * Agent
-       * =========================
+       * ===================================================
+       * 执行 Agent
+       * ===================================================
        */
 
       await runAgent(messages, text);
     } catch (error) {
-      console.error(chalk.red(`\nAgent Error: ${String(error)}`));
+      /**
+       * ===================================================
+       * 单轮错误
+       *
+       * 不退出整个 CLI
+       * ===================================================
+       */
+
+      console.error();
+
+      console.error(chalk.red("Agent Error:"));
+
+      console.error(chalk.red(String(error)));
     }
   }
 
+  /**
+   * =======================================================
+   * 关闭 readline
+   * =======================================================
+   */
+
   rl.close();
 
-  console.log(chalk.gray("\nBye 👋"));
+  console.log();
+
+  console.log(chalk.gray("Bye 👋"));
 }
-(async () => {
-  await main();
-})();
+
+/**
+ * =========================================================
+ * 启动程序
+ *
+ * 注意：
+ *
+ * 这里没有顶层 await
+ * =========================================================
+ */
+
+main().catch((error) => {
+  console.error();
+
+  console.error(chalk.red("程序异常:"));
+
+  console.error(chalk.red(String(error)));
+
+  process.exit(1);
+});
