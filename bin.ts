@@ -364,11 +364,12 @@ async function chatMessage(
 const result = await chatMessage(
   systemPrompt,
   [
-    fs.readFileSync("./skills/tdd/SKILL.md", "utf-8"),
     // "创建文件test.txt，并写入内容hello world",
     `test.ts 文件中实现冒泡排序`,
     // "当前项目目录路径",
-  ].join("\n"),
+  ]
+    .map((item) => item.trim())
+    .join("\n"),
 );
 
 console.log(chalk.green("\n\n最终结果:"));
