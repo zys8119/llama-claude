@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "dev": "ls **/*.ts system.md package.json | entr -r zsh -c \"clear; tsx bin.ts\""
+    "dev": "tsx --watch src/main.ts"
   },
   "keywords": [],
   "author": "",
