@@ -41,7 +41,7 @@ export class shallowRef {
     this.distributeUpdates(newValue, false);
   }
 }
-export function ref(value) {
+export function ref(value?: any) {
   return new shallowRef(value);
 }
 let activeSub = null;
@@ -49,4 +49,11 @@ export function effect(fn) {
   activeSub = fn;
   fn();
   activeSub = null;
+}
+export function computed(fn): shallowRef {
+  const value = ref(fn());
+  effect(() => {
+    value.value = fn();
+  });
+  return value;
 }
