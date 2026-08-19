@@ -238,8 +238,9 @@ export default function Textarea() {
         !key.shift &&
         !key.meta
       ) {
+        const text = buffer.getText();
         buffer.clear();
-        onSubmit(buffer.getText());
+        onSubmit(text);
       }
 
       // Shift + Enter
