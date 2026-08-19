@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Text, useInput, Box } from "ink";
-
+import { onSubmit } from "../openai.ts";
 
 class TextBuffer {
 
@@ -215,7 +215,7 @@ class TextBuffer {
 
 }
 
-export default function Textarea(props: { ref: React.RefObject<any> }) {
+export default function Textarea() {
 
   const [buffer] =
     useState(
@@ -238,17 +238,9 @@ export default function Textarea(props: { ref: React.RefObject<any> }) {
         !key.shift &&
         !key.meta
       ) {
-
-        console.log(
-          "\n提交:\n" +
-          buffer.getText()
-        );
-
-
         buffer.clear();
-
+        onSubmit(buffer.getText());
       }
-
 
       // Shift + Enter
       else if (
@@ -392,10 +384,6 @@ export default function Textarea(props: { ref: React.RefObject<any> }) {
 
   const lines =
     buffer.getLines();
-  props.ref.current = {
-    buffer: buffer,
-    lines: lines,
-  }
 
   const {
     row,
