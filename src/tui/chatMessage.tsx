@@ -13,12 +13,22 @@ export default function ChatMessage() {
         0
     );
     forceUpdate = _forceUpdate;
+
     return (
         <Box flexDirection="column">
             <Text>聊天记录</Text>
             <Box flexDirection="column">
                 {chatMessageLists.value.map((e, index) => (
-                    <Text key={index}>{e.content}</Text>
+                    e.type === "assistant" ? (
+                        <Box key={index}>
+                            <Text>{e.reasoning_content}</Text>
+                            <Text>{e.content}</Text>
+                        </Box>
+                    ) : (
+                        <Box key={index}>
+                            <Text>{e.content}</Text>
+                        </Box>
+                    )
                 ))}
             </Box>
         </Box>

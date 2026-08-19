@@ -49,7 +49,16 @@ export const onSubmit = async (
       chatMessageLists.value.push(assistantMessage);
     }
     assistantMessage.type = "assistant";
-    assistantMessage.content = chunk.choices[0].delta.content || "";
-    console.log(assistantMessage.content);
+    assistantMessage.content = "";
+    assistantMessage.reasoning_content = "";
+    const delta = chunk.choices[0]
+      .delta as unknown as (typeof chunk.choices)[number]["delta"] & {
+      reasoning_content?: string;
+    };
+    if (delta.reasoning_content) {
+      assistantMessage.reasoning_content += delta?.reasoning_content || "";
+    } else {
+      assistantMessage.content += delta?.content || "";
+    }
   }
 };
