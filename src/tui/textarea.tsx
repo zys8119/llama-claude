@@ -215,7 +215,7 @@ class TextBuffer {
 
 }
 
-export default function Textarea() {
+export default function Textarea(props?: { onSubmitResult?: (data: string) => void }) {
 
   const [buffer] =
     useState(
@@ -238,9 +238,11 @@ export default function Textarea() {
         !key.shift &&
         !key.meta
       ) {
-        const text = buffer.getText();
-        buffer.clear();
-        onSubmit(text);
+        (async () => {
+          const text = buffer.getText();
+          onSubmit(text, props?.onSubmitResult || (() => { }));
+          buffer.clear();
+        })()
       }
 
       // Shift + Enter
@@ -392,13 +394,11 @@ export default function Textarea() {
   } = buffer;
 
   return (
-
     <Box
       flexDirection="column"
       borderStyle="round"
       paddingX={1}
     >
-
       {
         lines.map(
           (line, index) => {
