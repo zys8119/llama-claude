@@ -1,6 +1,6 @@
 import Textarea from "./textarea.tsx";
 import React from "react";
-import { render, Box } from "ink";
+import { render, Box, Text } from "ink";
 import ChatMessage from "./chatMessage.tsx";
 function App() {
   return (

@@ -20,6 +20,7 @@ export function stdinResume() {
 // console.log(chalk.green(`✅ 已选择模型: ${model}`));
 export default openai;
 export const chatMessageLists = ref([]);
+
 export const onSubmit = async (
   text: string,
   onSubmitResult: (data: string) => void,
