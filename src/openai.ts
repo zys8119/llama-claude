@@ -49,8 +49,9 @@ export const onSubmit = async (
       chatMessageLists.value.push(assistantMessage);
     }
     assistantMessage.type = "assistant";
-    assistantMessage.content = "";
-    assistantMessage.reasoning_content = "";
+    assistantMessage.reasoning_content =
+      assistantMessage.reasoning_content || "";
+    assistantMessage.content = assistantMessage.content || "";
     const delta = chunk.choices[0]
       .delta as unknown as (typeof chunk.choices)[number]["delta"] & {
       reasoning_content?: string;
