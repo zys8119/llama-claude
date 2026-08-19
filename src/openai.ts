@@ -2,7 +2,6 @@ import { OpenAI } from "openai";
 import { search } from "@inquirer/prompts";
 import chalk from "chalk";
 import { ref } from "./effect.ts";
-import { useInput } from "ink";
 const openai = new OpenAI({
   apiKey: "sk-",
   baseURL: "http://127.0.0.1:8080/v1",
@@ -65,19 +64,33 @@ export const chat = async ({
     }
   }
 };
+export const controllerCache = [] as AbortController[];
+export const abortAllChat = () => {
+  controllerCache.forEach((e) => e.abort());
+  controllerCache.length = 0;
+};
+
 export const onSubmit = (text: string) => {
   chatMessageLists.value.push({
     role: "user",
     content: text,
   });
   const controller = new AbortController();
+  controllerCache.push(controller);
   chat({
     text,
     controller,
-  }).catch((err) => {
-    console.error("请求失败:", err.message);
-  });
+  })
+    .catch((err) => {
+      console.error("请求失败:", err.message);
+    })
+    .finally(() => {
+      controllerCache.splice(controllerCache.indexOf(controller), 1);
+    });
+
   return {
-    abort: () => controller.abort(),
+    abort: () => {
+      controller.abort();
+    },
   };
 };

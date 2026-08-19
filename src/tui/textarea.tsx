@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Text, useInput, Box } from "ink";
-import { onSubmit } from "../openai.ts";
-
+import { onSubmit, controllerCache, abortAllChat } from "../openai.ts";
 class TextBuffer {
 
   lines: string[] = [""];
@@ -217,7 +216,6 @@ class TextBuffer {
 let request: any = null;
 
 export default function Textarea() {
-
   const [buffer] =
     useState(
       () => new TextBuffer()
@@ -394,55 +392,62 @@ export default function Textarea() {
     row,
     col
   } = buffer;
+  const ref = React.useRef(null);
 
   return (
     <Box
-      flexDirection="column"
       borderStyle="round"
       paddingX={1}
+      justifyContent="space-between"
     >
-      {
-        lines.map(
-          (line, index) => {
+      <Box flexDirection="column">
+        {
+          lines.map(
+            (line, index) => {
 
-            if (
-              index === row
-            ) {
+              if (
+                index === row
+              ) {
+
+                return (
+                  <Text key={index}>
+
+                    {line.slice(
+                      0,
+                      col
+                    )}
+
+                    <Text inverse>
+                      {
+                        line[col] ?? " "
+                      }
+                    </Text>
+
+                    {line.slice(
+                      col + 1
+                    )}
+
+                  </Text>
+                );
+
+              }
+
 
               return (
                 <Text key={index}>
-
-                  {line.slice(
-                    0,
-                    col
-                  )}
-
-                  <Text inverse>
-                    {
-                      line[col] ?? " "
-                    }
-                  </Text>
-
-                  {line.slice(
-                    col + 1
-                  )}
-
+                  {line}
                 </Text>
               );
 
             }
-
-
-            return (
-              <Text key={index}>
-                {line}
-              </Text>
-            );
-
-          }
-        )
-      }
-
+          )
+        }
+      </Box>
+      {controllerCache.length ? <Box right="0" ref={ref}>
+        <Text>
+          ◼︎
+        </Text>
+      </Box> : null}
     </Box>
 
   );
