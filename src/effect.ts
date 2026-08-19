@@ -1,7 +1,7 @@
 export function createShallowRefValue(this: shallowRef, value: any) {
   if (typeof value === "object") {
     return new Proxy(value, {
-      get(target, prop, receiver) {
+      get: (target, prop, receiver) => {
         return createShallowRefValue.call(
           this,
           Reflect.get(target, prop, receiver),

@@ -11,13 +11,13 @@ export function stdinResume() {
   process.stdin.setRawMode(true);
   process.stdin.resume();
 }
-// export const models = (await openai.models.list()).data.map((e) => e.id);
-// export const model = await search({
-//   message: "请选择模型",
-//   source: (input) => (input ? models.filter((e) => e.includes(input)) : models),
-// });
-// stdinResume();
-// console.log(chalk.green(`✅ 已选择模型: ${model}`));
+export const models = (await openai.models.list()).data.map((e) => e.id);
+export const model = await search({
+  message: "请选择模型",
+  source: (input) => (input ? models.filter((e) => e.includes(input)) : models),
+});
+stdinResume();
+console.log(chalk.green(`✅ 已选择模型: ${model}`));
 export default openai;
 export const chatMessageLists = ref([]);
 
@@ -29,17 +29,27 @@ export const onSubmit = async (
     role: "user",
     content: text,
   });
-  // const response = await openai.chat.completions.create({
-  //   model: model,
-  //   messages: [
-  //     {
-  //       role: "user",
-  //       content: text,
-  //     },
-  //   ],
-  //   stream: true,
-  // });
-  // for await (const chunk of response) {
-  //   process.stdout.write(chunk.choices[0].delta.content || "");
-  // }
+  const response = await openai.chat.completions.create({
+    model: model,
+    messages: [
+      {
+        role: "user",
+        content: text,
+      },
+    ],
+    stream: true,
+  });
+
+  for await (const chunk of response) {
+    let assistantMessage = chatMessageLists.value.find(
+      (e) => e.id && e.id === chunk.id,
+    );
+    if (!assistantMessage) {
+      assistantMessage = chunk;
+      chatMessageLists.value.push(assistantMessage);
+    }
+    assistantMessage.type = "assistant";
+    assistantMessage.content = chunk.choices[0].delta.content || "";
+    console.log(assistantMessage.content);
+  }
 };
