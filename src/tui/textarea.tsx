@@ -214,8 +214,9 @@ class TextBuffer {
   }
 
 }
+let request: any = null;
 
-export default function Textarea(props?: { onSubmitResult?: (data: string) => void }) {
+export default function Textarea() {
 
   const [buffer] =
     useState(
@@ -225,7 +226,6 @@ export default function Textarea(props?: { onSubmitResult?: (data: string) => vo
 
   const [, update] =
     useState(0);
-
 
 
   useInput(
@@ -240,7 +240,7 @@ export default function Textarea(props?: { onSubmitResult?: (data: string) => vo
       ) {
         (async () => {
           const text = buffer.getText();
-          onSubmit(text, props?.onSubmitResult || (() => { }));
+          request = onSubmit(text);
           buffer.clear();
         })()
       }
@@ -375,7 +375,9 @@ export default function Textarea(props?: { onSubmitResult?: (data: string) => vo
 
       }
 
-
+      if (key.escape) {
+        request?.abort?.();
+      }
       update(
         x => x + 1
       );

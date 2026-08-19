@@ -1,8 +1,8 @@
 import { OpenAI } from "openai";
 import { search } from "@inquirer/prompts";
 import chalk from "chalk";
-import React from "react";
-import { ref, effect } from "./effect.ts";
+import { ref } from "./effect.ts";
+import { useInput } from "ink";
 const openai = new OpenAI({
   apiKey: "sk-",
   baseURL: "http://127.0.0.1:8080/v1",
@@ -20,26 +20,28 @@ stdinResume();
 console.log(chalk.green(`✅ 已选择模型: ${model}`));
 export default openai;
 export const chatMessageLists = ref([]);
-
-export const onSubmit = async (
-  text: string,
-  onSubmitResult: (data: string) => void,
-) => {
-  chatMessageLists.value.push({
-    role: "user",
-    content: text,
-  });
-  const response = await openai.chat.completions.create({
-    model: model,
-    messages: [
-      {
-        role: "user",
-        content: text,
-      },
-    ],
-    stream: true,
-  });
-
+export const chat = async ({
+  text,
+  controller,
+}: {
+  text: string;
+  controller: AbortController;
+}) => {
+  const response = await openai.chat.completions.create(
+    {
+      model: model,
+      messages: [
+        {
+          role: "user",
+          content: text,
+        },
+      ],
+      stream: true,
+    },
+    {
+      signal: controller.signal,
+    },
+  );
   for await (const chunk of response) {
     let assistantMessage = chatMessageLists.value.find(
       (e) => e.id && e.id === chunk.id,
@@ -62,4 +64,20 @@ export const onSubmit = async (
       assistantMessage.content += delta?.content || "";
     }
   }
+};
+export const onSubmit = (text: string) => {
+  chatMessageLists.value.push({
+    role: "user",
+    content: text,
+  });
+  const controller = new AbortController();
+  chat({
+    text,
+    controller,
+  }).catch((err) => {
+    console.error("请求失败:", err.message);
+  });
+  return {
+    abort: () => controller.abort(),
+  };
 };
