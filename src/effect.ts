@@ -8,9 +8,7 @@ export function createShallowRefValue(this: shallowRef, value: any) {
         );
       },
       set: (target, prop, value, receiver) => {
-        this.subs.forEach((sub: any) => {
-          sub();
-        });
+        this.distributeUpdates(value, true);
         return Reflect.set(target, prop, value, receiver);
       },
     });
@@ -30,12 +28,17 @@ export class shallowRef {
     }
     return this._value;
   }
-  set value(newValue) {
-    this._value = createShallowRefValue.call(this, newValue);
-    console.log(activeSub, 344);
+  // 派发更新
+  distributeUpdates(newValue, isProxy = true) {
+    if (!isProxy) {
+      this._value = createShallowRefValue.call(this, newValue);
+    }
     this.subs.forEach((sub: any) => {
       sub();
     });
+  }
+  set value(newValue) {
+    this.distributeUpdates(newValue, false);
   }
 }
 export function ref(value) {
