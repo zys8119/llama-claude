@@ -207,6 +207,9 @@ importers:
 
   .:
     dependencies:
+      '@ink-tools/ink-mouse':
+        specifier: ^2.1.0
+        version: 2.1.0(ink@7.1.1(@types/react@19.2.18)(react@19.2.8))(react@19.2.8)
       '@inquirer/prompts':
         specifier: ^8.5.2
         version: 8.5.2(@types/node@26.2.0)
@@ -303,6 +306,13 @@ packages:
   '@babel/types@7.29.8':
     resolution: {integrity: sha512-Vj1jF3cPfxg7OAfoI7QnVKLoILlm2JF9pnVHrX8qx7AHMiYWT+NDAA7jChlNgRS4WTLc/fD1lXLmPixluj+3Gg==}
     engines: {node: '>=6.9.0'}
+
+  '@ink-tools/ink-mouse@2.1.0':
+    resolution: {integrity: sha512-6EfKsu6R3VYRgRRWsQ7PI5kJy+OsS/VAVhbG+YvUeZePKuHSS2AvstFD5yU/748iQS6wBBENtMoCcBvCjbylog==}
+    engines: {node: '>=20'}
+    peerDependencies:
+      ink: '>=6'
+      react: '>=17'
 
   '@inquirer/ansi@2.0.7':
     resolution: {integrity: sha512-3eTuUO1vH2cZm2ZKHeQxnOqlTi9EfZDGgIe3BL3I4u+rJHocr9Fz86M4fjYABPvFnQG/gGK551HqDiIcETwU6Q==}
@@ -913,6 +923,10 @@ packages:
       utf-8-validate:
         optional: true
 
+  xterm-mouse@1.0.0:
+    resolution: {integrity: sha512-A+PkxOzlwgnhfeZclQvCNfLIcLbtTyDSgWs//adOYYUKdjhU9Lejot6wbnW5GEyNCWFFkfLHO8wdQ8eg35BMUg==}
+    engines: {node: '>=20'}
+
   yoga-layout@3.2.1:
     resolution: {integrity: sha512-0LPOt3AxKqMdFBZA3HBAt/t/8vIKq7VaQYbuA8WxCgung+p9TVyKRYdpvCb80HcdTN2NkbIKbhNwKUfm3tQywQ==}
 
@@ -938,6 +952,12 @@ snapshots:
     dependencies:
       '@babel/helper-string-parser': 7.29.7
       '@babel/helper-validator-identifier': 7.29.7
+
+  '@ink-tools/ink-mouse@2.1.0(ink@7.1.1(@types/react@19.2.18)(react@19.2.8))(react@19.2.8)':
+    dependencies:
+      ink: 7.1.1(@types/react@19.2.18)(react@19.2.8)
+      react: 19.2.8
+      xterm-mouse: 1.0.0
 
   '@inquirer/ansi@2.0.7': {}
 
@@ -1471,6 +1491,8 @@ snapshots:
       string-width: 8.2.2
 
   ws@8.21.3: {}
+
+  xterm-mouse@1.0.0: {}
 
   yoga-layout@3.2.1: {}
 

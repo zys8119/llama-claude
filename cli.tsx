@@ -1,36 +1,19 @@
-import React, { useState } from "react";
-import { render, Box, Text } from "ink";
-import TextInput from "ink-text-input";
-import { useMouse } from "ink-mouse";
-function App() {
+import Textarea from "./textarea.tsx";
+import React from "react";
+import { render, Box } from "ink";
 
-  const [input, setInput] = useState("");
-  console.log(3333);
+
+
+export default function App() {
+  const ref = React.useRef<any>(null);
+  React.useEffect(() => {
+    console.log(ref.current.lines, 666);
+  }, []);
+  console.log(ref.current?.lines, 7777);
   return (
-    <Box
-      flexDirection="column"
-      height={process.stdout.rows}
-    >
-      <Text onClick={() => setInput("hello")}>{input}</Text>
-      <Box
-        borderStyle="round"
-        borderColor="cyan"
-      >
-
-        <Text>
-          &gt;
-        </Text>
-
-        <TextInput
-          value={input}
-          onChange={setInput}
-        />
-
-      </Box>
-
+    <Box flexDirection="column">
+      <Textarea ref={ref} />
     </Box>
   );
 }
-
-
 render(<App />);

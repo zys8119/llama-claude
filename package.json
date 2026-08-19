@@ -18,6 +18,7 @@
   },
   "type": "module",
   "dependencies": {
+    "@ink-tools/ink-mouse": "^2.1.0",
     "@inquirer/prompts": "^8.5.2",
     "@simon_he/vue-tui": "^1.1.6",
     "@types/blessed": "^0.1.27",
