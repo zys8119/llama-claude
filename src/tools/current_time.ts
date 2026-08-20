@@ -7,7 +7,7 @@ export default {
   type: "function",
   function: {
     name: "current_time",
-    description: "获取当前时间",
+    description: "获取当前时间,同时返回日历信息",
     parameters: z.object({}).toJSONSchema(),
   },
 

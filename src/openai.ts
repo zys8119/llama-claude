@@ -1,7 +1,12 @@
 import { OpenAI } from "openai";
 import { search } from "@inquirer/prompts";
 import chalk from "chalk";
-import { ref, computed, effect } from "./effect.ts";
+import { ref, computed } from "./effect.ts";
+import * as glob from "glob";
+import fs from "fs-extra";
+import _ from "lodash";
+import dayjs from "dayjs";
+_.templateSettings.interpolate = /{{([\s\S]+?)}}/g;
 const openai = new OpenAI({
   apiKey: "sk-",
   baseURL: "http://127.0.0.1:8080/v1",
@@ -41,24 +46,52 @@ export const chatMessagesData = computed(() =>
   }),
 );
 
-export function pullSystemPrompt() {
+export async function pullSystemPrompt() {
   return [
     {
       role: "system",
-      content: "你是一个专业的助手，你的任务是回答用户的问题。",
+      content: _.template(
+        glob
+          .sync(["./prompts/**/*.md"], {
+            cwd: import.meta.dirname,
+            absolute: true,
+          })
+          .map((e) => fs.readFileSync(e, "utf-8"))
+          .join("\n"),
+      )({
+        project_dir: process.cwd(),
+        current_time: dayjs().format("YYYY-MM-DD HH:mm:ss"),
+      }),
     },
   ];
+}
+
+export async function pullTools() {
+  const tools = await Promise.all(
+    glob
+      .sync(["./tools/**/*.ts"], {
+        cwd: import.meta.dirname,
+        absolute: true,
+      })
+      .map((e) => import(e)),
+  );
+  return tools.map((e) => _.omit(e.default, ["callback"]));
 }
 type ChatMessages = Parameters<
   typeof openai.chat.completions.create
 >[0]["messages"];
+type ChatTools = Parameters<typeof openai.chat.completions.create>[0]["tools"];
 export const chat = async ({ controller }: { controller: AbortController }) => {
   console.log(chalk.blue(chatMessagesData.value.at(-1).content));
   const systemPrompt = await pullSystemPrompt();
+  const tools = await pullTools();
   const response = await openai.chat.completions.create(
     {
       model: model,
-      messages: systemPrompt.concat(chatMessagesData.value) as ChatMessages,
+      messages: systemPrompt.concat(
+        chatMessagesData.value,
+      ) as unknown as ChatMessages,
+      tools: tools as unknown as ChatTools,
       stream: true,
     },
     {

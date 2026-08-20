@@ -1,10 +1,10 @@
 // import run from "./tui/cli.tsx";
 // run();
 import { input } from "@inquirer/prompts";
-import { onSubmit } from "./openai.ts";
+import { onSubmit, pullTools } from "./openai.ts";
 (async function run() {
   const question = await input({
-    message: "请输入您的问题",
+    message: ">",
   });
   await onSubmit(question);
   await run();
