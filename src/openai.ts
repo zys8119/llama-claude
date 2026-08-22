@@ -16,8 +16,9 @@ export function stdinResume() {
   process.stdin.resume();
 }
 export const models = (await openai.models.list()).data.map((e) => e.id);
+console.log(models);
 export const model =
-  "Qwen3-0.6B-Q8_0" ||
+  "qwen3-0.6b-q4_k_m" ||
   (await search({
     message: "请选择模型",
     source: (input) =>
@@ -36,10 +37,13 @@ export const chatMessagesData = computed(() =>
           content: e.content,
         };
       case "assistant":
-        return {
-          role: "assistant",
-          content: e.content,
-        };
+        return _.merge(
+          {
+            role: "assistant",
+            content: e.content,
+          },
+          e.tool_calls?.length > 0 ? { tool_calls: e.tool_calls } : {},
+        );
       default:
         return e;
     }
@@ -66,7 +70,14 @@ export async function pullSystemPrompt() {
   ];
 }
 
-export async function pullTools() {
+export type PullToolsParams<T = Parameters<typeof _.omit>> = T extends [
+  infer V,
+  ...infer Rest,
+]
+  ? Rest
+  : never;
+
+export async function pullTools(...params: PullToolsParams) {
   const tools = await Promise.all(
     glob
       .sync(["./tools/**/*.ts"], {
@@ -75,7 +86,45 @@ export async function pullTools() {
       })
       .map((e) => import(e)),
   );
-  return tools.map((e) => _.omit(e.default, ["callback"]));
+  return tools.map((e) =>
+    params.length > 0 ? _.omit(e.default, ...params) : e.default,
+  );
+}
+
+export async function toolCallListExecute(
+  toolCallList: Array<{
+    type: "function";
+    index: number;
+    id: string;
+    function: {
+      arguments: string;
+      name: string;
+    };
+    content?: string;
+  }>,
+) {
+  const tools = await pullTools();
+  const toolCallListResult = [] as any[];
+  for (const e of toolCallList) {
+    if (e.type === "function") {
+      const params = JSON.parse(e.function.arguments);
+      const functionName = e.function.name;
+      const tool = tools.find(
+        (t) => t.type === "function" && t.function.name === functionName,
+      );
+      if (!tool) {
+        continue;
+      }
+      const result = await tool.callback(params);
+      e.content = result;
+      toolCallListResult.push({
+        role: "tool",
+        tool_call_id: e.id,
+        content: result,
+      });
+    }
+  }
+  return toolCallListResult;
 }
 type ChatMessages = Parameters<
   typeof openai.chat.completions.create
@@ -84,7 +133,8 @@ type ChatTools = Parameters<typeof openai.chat.completions.create>[0]["tools"];
 export const chat = async ({ controller }: { controller: AbortController }) => {
   console.log(chalk.blue(chatMessagesData.value.at(-1).content));
   const systemPrompt = await pullSystemPrompt();
-  const tools = await pullTools();
+  const tools = await pullTools(["callback"]);
+  console.log(JSON.stringify(chatMessagesData.value, null, 2));
   const response = await openai.chat.completions.create(
     {
       model: model,
@@ -98,8 +148,10 @@ export const chat = async ({ controller }: { controller: AbortController }) => {
       signal: controller.signal,
     },
   );
+  const toolCallList = [] as any[];
+  let assistantMessage = null as any;
   for await (const chunk of response) {
-    let assistantMessage = chatMessageLists.value.find(
+    assistantMessage = chatMessageLists.value.find(
       (e: any) => e.id && e.id === chunk.id,
     );
     if (!assistantMessage) {
@@ -114,7 +166,19 @@ export const chat = async ({ controller }: { controller: AbortController }) => {
       .delta as unknown as (typeof chunk.choices)[number]["delta"] & {
       reasoning_content?: string;
     };
-    if (delta.reasoning_content) {
+    if (delta.tool_calls) {
+      delta.tool_calls.forEach((e: any) => {
+        const tool = toolCallList.find(
+          (t) => t.id === e.id || t.index === e.index,
+        );
+        if (tool && tool.type === "function") {
+          tool.function.arguments += e.function.arguments || "";
+        }
+        if (!tool) {
+          toolCallList.push(e);
+        }
+      });
+    } else if (delta.reasoning_content) {
       process.stdout.write(chalk.gray(delta?.reasoning_content || ""));
       assistantMessage.reasoning_content += delta?.reasoning_content || "";
     } else {
@@ -123,6 +187,11 @@ export const chat = async ({ controller }: { controller: AbortController }) => {
     }
   }
   process.stdout.write("\n");
+  if (toolCallList.length > 0) {
+    assistantMessage.tool_calls = toolCallList;
+    chatMessageLists.value.push(...(await toolCallListExecute(toolCallList)));
+  }
+  console.log(toolCallList);
 };
 export const controllerCache = [] as AbortController[];
 export const abortAllChat = () => {
