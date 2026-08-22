@@ -1,9 +1,21 @@
 import path from "path";
 export const runtimeInfo = async () => {
   return {
-    current_time: new Date().toLocaleString(),
-    project_dir: path.resolve(process.cwd(), "dist"),
-    uname: process.platform,
+    current_time: {
+      type: "string",
+      description: "当前时间",
+      value: new Date().toLocaleString(),
+    },
+    project_dir: {
+      type: "string",
+      description: "当前项目目录路径",
+      value: path.resolve(process.cwd(), "dist"),
+    },
+    uname: {
+      type: "string",
+      description: "uname系统",
+      value: process.platform,
+    },
   };
 };
 export default {

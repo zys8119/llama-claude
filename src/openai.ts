@@ -134,6 +134,7 @@ export const chat = async ({ controller }: { controller: AbortController }) => {
   console.log(chalk.blue(chatMessagesData.value.at(-1).content));
   const systemPrompt = await pullSystemPrompt();
   const tools = await pullTools(["callback"]);
+  console.log(JSON.stringify(chatMessagesData.value));
   const response = await openai.chat.completions.create(
     {
       model: model,
