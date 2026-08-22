@@ -22,7 +22,8 @@ export default {
   type: "function",
   function: {
     name: "runtime_info",
-    description: "获取当前运行时信息, 包括当前时间, 项目目录, uname系统",
+    description:
+      "当前运行时信息, 包括当前时间, 项目目录,当前目录, uname系统等问题",
   },
   callback: runtimeInfo,
 };

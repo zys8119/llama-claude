@@ -116,11 +116,13 @@ export async function toolCallListExecute(
         continue;
       }
       const result = await tool.callback(params);
-      e.content = result;
       toolCallListResult.push({
         role: "tool",
         tool_call_id: e.id,
-        content: result,
+        content:
+          result === null || result === undefined
+            ? null
+            : JSON.stringify(result) || null,
       });
     }
   }
@@ -131,10 +133,8 @@ type ChatMessages = Parameters<
 >[0]["messages"];
 type ChatTools = Parameters<typeof openai.chat.completions.create>[0]["tools"];
 export const chat = async ({ controller }: { controller: AbortController }) => {
-  console.log(chalk.blue(chatMessagesData.value.at(-1).content));
   const systemPrompt = await pullSystemPrompt();
   const tools = await pullTools(["callback"]);
-  console.log(JSON.stringify(chatMessagesData.value));
   const response = await openai.chat.completions.create(
     {
       model: model,
