@@ -134,7 +134,6 @@ export const chat = async ({ controller }: { controller: AbortController }) => {
   console.log(chalk.blue(chatMessagesData.value.at(-1).content));
   const systemPrompt = await pullSystemPrompt();
   const tools = await pullTools(["callback"]);
-  console.log(JSON.stringify(chatMessagesData.value, null, 2));
   const response = await openai.chat.completions.create(
     {
       model: model,
@@ -190,8 +189,8 @@ export const chat = async ({ controller }: { controller: AbortController }) => {
   if (toolCallList.length > 0) {
     assistantMessage.tool_calls = toolCallList;
     chatMessageLists.value.push(...(await toolCallListExecute(toolCallList)));
+    await chat({ controller });
   }
-  console.log(toolCallList);
 };
 export const controllerCache = [] as AbortController[];
 export const abortAllChat = () => {
